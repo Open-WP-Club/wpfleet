@@ -1,0 +1,110 @@
+{
+    # Enable debug mode if needed
+    # debug
+    
+    # Global options
+    email {$ACME_EMAIL:admin@{$SERVER_NAME}}
+    
+    # Security headers
+    servers {
+        protocols h1 h2 h3
+    }
+}
+
+# Health check endpoint (internal only)
+:80 {
+    respond /health "OK" 200
+}
+
+# Main site configuration
+{$SERVER_NAME:localhost} {
+    # Enable compression
+    encode zstd gzip
+    
+    # Security headers
+    header {
+        # Remove sensitive headers
+        -Server
+        -X-Powered-By
+        
+        # Security headers
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "no-referrer-when-downgrade"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        
+        # CSP - adjust as needed
+        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval';"
+        
+        # Permissions Policy
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    }
+    
+    # PHP-FPM via FrankenPHP
+    root * /var/www/html
+    
+    # Redirect www to non-www (or vice versa)
+    @www {
+        host www.{$SERVER_NAME}
+    }
+    redir @www https://{$SERVER_NAME}{uri} permanent
+    
+    # WordPress specific rules
+    @wp-admin {
+        path /wp-admin*
+    }
+    
+    @disallowed {
+        path /xmlrpc.php
+        path /wp-config.php
+        path /.user.ini
+        path /.htaccess
+        path /wp-content/debug.log
+        path */.*
+    }
+    
+    # Block access to sensitive files
+    respond @disallowed 403
+    
+    # Handle WordPress permalinks
+    php_server {
+        # FrankenPHP specific settings
+        resolve_root_symlink
+        
+        # WordPress specific try_files directive
+        try_files {path} {path}/ /index.php?{query}
+    }
+    
+    # Cache static assets
+    @static {
+        path *.css *.js *.ico *.gif *.jpg *.jpeg *.png *.svg *.woff *.woff2 *.ttf *.eot
+    }
+    
+    header @static {
+        Cache-Control "public, max-age=31536000, immutable"
+    }
+    
+    # File upload size
+    request_body {
+        max_size 64MB
+    }
+    
+    # Logging
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+    
+    # Enable file server for static files
+    file_server
+    
+    # Handle 404s
+    handle_errors {
+        respond "{http.error.status_code} {http.error.status_text}"
+    }
+}

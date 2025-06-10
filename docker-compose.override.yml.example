@@ -1,0 +1,80 @@
+# Docker Compose Override Example
+# Copy to docker-compose.override.yml and uncomment sections as needed
+
+version: '3.8'
+
+services:
+  # Development database access
+  # Uncomment to add phpMyAdmin for development
+  # phpmyadmin:
+  #   image: phpmyadmin/phpmyadmin:latest
+  #   container_name: wpfleet_phpmyadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PMA_HOST: mariadb
+  #     PMA_USER: ${MYSQL_USER}
+  #     PMA_PASSWORD: ${MYSQL_PASSWORD}
+  #     UPLOAD_LIMIT: 100M
+  #   ports:
+  #     - "127.0.0.1:8080:80"
+  #   networks:
+  #     - wpfleet
+  #   depends_on:
+  #     - mariadb
+
+  # Development mail catcher
+  # Uncomment to add Mailhog for development
+  # mailhog:
+  #   image: mailhog/mailhog:latest
+  #   container_name: wpfleet_mailhog
+  #   restart: unless-stopped
+  #   ports:
+  #     - "127.0.0.1:1025:1025"  # SMTP
+  #     - "127.0.0.1:8025:8025"  # Web UI
+  #   networks:
+  #     - wpfleet
+
+  # Redis Commander for development
+  # Uncomment to add Redis web interface
+  # redis-commander:
+  #   image: rediscommander/redis-commander:latest
+  #   container_name: wpfleet_redis_commander
+  #   restart: unless-stopped
+  #   environment:
+  #     REDIS_HOSTS: local:redis:6379
+  #   ports:
+  #     - "127.0.0.1:8081:8081"
+  #   networks:
+  #     - wpfleet
+  #   depends_on:
+  #     - redis
+
+  # Portainer for Docker management
+  # Uncomment to add Portainer
+  # portainer:
+  #   image: portainer/portainer-ce:latest
+  #   container_name: wpfleet_portainer
+  #   restart: unless-stopped
+  #   command: -H unix:///var/run/docker.sock
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - portainer_data:/data
+  #   ports:
+  #     - "127.0.0.1:9000:9000"
+  #   networks:
+  #     - wpfleet
+
+  # Override MariaDB for development
+  # mariadb:
+  #   ports:
+  #     - "127.0.0.1:3306:3306"  # Expose to host for development
+
+  # Override Redis for development
+  # redis:
+  #   ports:
+  #     - "127.0.0.1:6379:6379"  # Expose to host for development
+
+# Additional volumes for development tools
+# volumes:
+#   portainer_data:
+#     driver: local

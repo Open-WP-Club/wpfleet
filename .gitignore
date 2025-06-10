@@ -1,0 +1,114 @@
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Data directories
+data/wordpress/*
+data/mariadb/*
+data/redis/*
+data/logs/*
+!data/**/.gitkeep
+
+# Backup files
+backups/
+*.sql
+*.tar.gz
+*.zip
+backup_*
+
+# Site configurations (except examples)
+config/sites/*
+!config/sites/.gitkeep
+!config/sites/example.com.sample
+
+# Docker override files
+docker-compose.override.yml
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.AppleDouble
+.LSOverride
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+.project
+.settings/
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.cache
+tmp/
+temp/
+
+# SSL certificates (managed by Caddy)
+*.pem
+*.key
+*.crt
+*.csr
+
+# WordPress specific
+wp-config.php
+wp-content/uploads/
+wp-content/cache/
+wp-content/backup*/
+wp-content/backups/
+wp-content/upgrade/
+wp-content/ai1wm-backups/
+
+# Security
+.htaccess
+.htpasswd
+.user.ini
+
+# Docker volumes (if using bind mounts)
+volumes/
+
+# Test files
+test/
+tests/
+phpunit.xml
+
+# Documentation build
+docs/_build/
+docs/.doctrees/
+
+# Python (for any automation scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+ENV/
+
+# Node.js (if using any JS tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Composer (if used for plugin development)
+vendor/
+composer.lock
+
+# Monitoring and metrics
+prometheus/
+grafana/
+*.rrd
+
+# Custom exclusions
+.notes
+.todo
+TODO.md
+NOTES.md

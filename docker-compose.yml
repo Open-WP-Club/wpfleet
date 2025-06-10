@@ -1,0 +1,94 @@
+version: '3.8'
+
+networks:
+  wpfleet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  mariadb_data:
+    driver: local
+  redis_data:
+    driver: local
+
+services:
+  mariadb:
+    image: mariadb:11
+    container_name: wpfleet_mariadb
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: wpfleet_admin
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./docker/mariadb/init:/docker-entrypoint-initdb.d:ro
+      - ./data/logs/mariadb:/var/log/mysql
+    networks:
+      wpfleet:
+        ipv4_address: 172.20.0.2
+    ports:
+      - "127.0.0.1:3306:3306"
+    command: 
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --max_connections=500
+      - --innodb_buffer_pool_size=256M
+      - --innodb_log_file_size=64M
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  redis:
+    image: redis:7-alpine
+    container_name: wpfleet_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    networks:
+      wpfleet:
+        ipv4_address: 172.20.0.3
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: redis-server /usr/local/etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Dynamic site services will be added here by site-manager.sh
+  # Example format:
+  # site_example_com:
+  #   build:
+  #     context: ./docker/frankenphp
+  #     args:
+  #       PHP_VERSION: 8.3
+  #   container_name: wpfleet_example_com
+  #   restart: unless-stopped
+  #   environment:
+  #     SERVER_NAME: example.com
+  #     DB_NAME: wp_example_com
+  #     DB_USER: ${MYSQL_USER}
+  #     DB_PASSWORD: ${MYSQL_PASSWORD}
+  #     DB_HOST: mariadb
+  #     REDIS_HOST: redis
+  #   volumes:
+  #     - ./data/wordpress/example_com:/var/www/html
+  #     - ./config/sites/example_com/Caddyfile:/etc/caddy/Caddyfile:ro
+  #   networks:
+  #     wpfleet:
+  #   depends_on:
+  #     mariadb:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   labels:
+  #     - "wpfleet.site=example.com"
