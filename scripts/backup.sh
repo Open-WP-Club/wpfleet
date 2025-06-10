@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# WPFleet Backup Script
+# WPFleet Backup Script 
 # Automated backup for all WordPress sites
 
 set -e
@@ -44,10 +44,15 @@ mkdir -p "$BACKUP_ROOT/configs"
 # Function to backup a single site
 backup_site() {
     local domain=$1
-    local container_name="wpfleet_$domain"
     local db_name="wp_$(echo "$domain" | tr '.' '_' | tr '-' '_')"
     
     print_info "Backing up site: $domain"
+    
+    # Check if site exists
+    if [ ! -d "$PROJECT_ROOT/data/wordpress/$domain" ]; then
+        print_error "Site $domain not found!"
+        return 1
+    fi
     
     # Create site backup directory
     local site_backup_dir="$BACKUP_ROOT/$TIMESTAMP/$domain"
@@ -67,21 +72,21 @@ backup_site() {
     
     # Backup configuration
     print_info "  - Backing up configuration..."
-    if [ -d "$PROJECT_ROOT/config/sites/$domain" ]; then
-        tar -czf "$site_backup_dir/config.tar.gz" \
-            -C "$PROJECT_ROOT/config/sites" \
-            "$domain" 2>/dev/null || true
+    if [ -f "$PROJECT_ROOT/config/caddy/sites/${domain}.caddy" ]; then
+        cp "$PROJECT_ROOT/config/caddy/sites/${domain}.caddy" "$site_backup_dir/"
     fi
+    
+    # Get WordPress version
+    local wp_version=$(docker exec -u www-data -w "/var/www/html/$domain" wpfleet_frankenphp wp core version 2>/dev/null || echo 'unknown')
     
     # Create backup manifest
     cat > "$site_backup_dir/manifest.json" << EOF
 {
     "domain": "$domain",
     "timestamp": "$TIMESTAMP",
-    "container": "$container_name",
     "database": "$db_name",
-    "wordpress_version": "$(docker exec -u www-data $container_name wp core version 2>/dev/null || echo 'unknown')",
-    "php_version": "$(docker exec $container_name php -v | head -1 | cut -d' ' -f2)",
+    "wordpress_version": "$wp_version",
+    "php_version": "$(docker exec wpfleet_frankenphp php -v | head -1 | cut -d' ' -f2)",
     "backup_size": "$(du -sh $site_backup_dir | cut -f1)"
 }
 EOF
@@ -93,13 +98,20 @@ cleanup_old_backups() {
     find "$BACKUP_ROOT" -maxdepth 1 -type d -name "20*" -mtime +$RETENTION_DAYS -exec rm -rf {} \; 2>/dev/null || true
 }
 
+# Function to get all sites
+get_all_sites() {
+    find "$PROJECT_ROOT/config/caddy/sites" -name "*.caddy" 2>/dev/null | while read f; do
+        basename "$f" .caddy
+    done | sort
+}
+
 # Main backup logic
 case "$1" in
     all)
         print_info "Starting backup of all sites..."
         
         # Get all active sites
-        SITES=$(docker ps --filter "label=wpfleet.site" --format "{{.Labels}}" | sed 's/.*wpfleet.site=//' | sort)
+        SITES=$(get_all_sites)
         
         if [ -z "$SITES" ]; then
             print_error "No active sites found!"
@@ -193,13 +205,11 @@ EOF
         tar -xzf "$BACKUP_DIR/files.tar.gz" -C "$PROJECT_ROOT/data/wordpress"
         
         # Restore configuration
-        if [ -f "$BACKUP_DIR/config.tar.gz" ]; then
+        if [ -f "$BACKUP_DIR/${DOMAIN}.caddy" ]; then
             print_info "Restoring configuration..."
-            tar -xzf "$BACKUP_DIR/config.tar.gz" -C "$PROJECT_ROOT/config/sites"
+            cp "$BACKUP_DIR/${DOMAIN}.caddy" "$PROJECT_ROOT/config/caddy/sites/"
+            "$SCRIPT_DIR/site-manager.sh" reload
         fi
-        
-        # Restart container
-        "$SCRIPT_DIR/site-manager.sh" restart "$DOMAIN"
         
         print_success "Site restored successfully!"
         ;;

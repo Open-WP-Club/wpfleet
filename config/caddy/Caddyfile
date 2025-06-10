@@ -1,0 +1,17 @@
+{
+    # Global options
+    email {$ACME_EMAIL:admin@example.com}
+    
+    # Security headers
+    servers {
+        protocols h1 h2 h3
+    }
+}
+
+# Health check endpoint
+:8080 {
+    respond /health "OK" 200
+}
+
+# Import all site configurations
+import /etc/caddy/sites/*.caddy

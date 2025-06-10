@@ -1,12 +1,13 @@
 #!/bin/bash
 
-# WPFleet WP-CLI Wrapper
+# WPFleet WP-CLI Wrapper 
 # Execute WP-CLI commands for specific sites
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+CONTAINER="wpfleet_frankenphp"
 
 # Colors for output
 RED='\033[0;31m'
@@ -39,26 +40,36 @@ if [ -z "$1" ]; then
     echo "  $0 example.com shell"
     echo ""
     echo "Available sites:"
-    docker ps --filter "label=wpfleet.site" --format "  - {{.Labels}}" | sed 's/.*wpfleet.site=//' | sort
+    find "$PROJECT_ROOT/config/caddy/sites" -name "*.caddy" 2>/dev/null | while read f; do
+        echo "  - $(basename "$f" .caddy)"
+    done | sort
     exit 1
 fi
 
 DOMAIN=$1
-CONTAINER="wpfleet_$DOMAIN"
+SITE_DIR="/var/www/html/$DOMAIN"
 shift
 
-# Check if container exists and is running
+# Check if container is running
 if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
     print_error "Container $CONTAINER not found or not running!"
+    exit 1
+fi
+
+# Check if site exists
+if ! docker exec "$CONTAINER" test -d "$SITE_DIR"; then
+    print_error "Site $DOMAIN not found!"
     print_info "Available sites:"
-    docker ps --filter "label=wpfleet.site" --format "  - {{.Labels}}" | sed 's/.*wpfleet.site=//' | sort
+    find "$PROJECT_ROOT/config/caddy/sites" -name "*.caddy" 2>/dev/null | while read f; do
+        echo "  - $(basename "$f" .caddy)"
+    done | sort
     exit 1
 fi
 
 # Special handling for shell command
 if [ "$1" = "shell" ]; then
-    print_info "Opening shell in $CONTAINER..."
-    docker exec -it -u www-data "$CONTAINER" bash
+    print_info "Opening shell in $CONTAINER for site $DOMAIN..."
+    docker exec -it -u www-data -w "$SITE_DIR" "$CONTAINER" bash
     exit 0
 fi
 
@@ -66,8 +77,8 @@ fi
 if [ $# -eq 0 ]; then
     # Interactive WP-CLI shell
     print_info "Opening WP-CLI shell for $DOMAIN..."
-    docker exec -it -u www-data "$CONTAINER" wp shell
+    docker exec -it -u www-data -w "$SITE_DIR" "$CONTAINER" wp shell
 else
     # Execute specific WP-CLI command
-    docker exec -u www-data "$CONTAINER" wp "$@"
+    docker exec -u www-data -w "$SITE_DIR" "$CONTAINER" wp "$@"
 fi

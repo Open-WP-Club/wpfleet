@@ -12,6 +12,10 @@ volumes:
     driver: local
   redis_data:
     driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
 
 services:
   mariadb:
@@ -64,31 +68,40 @@ services:
       timeout: 3s
       retries: 3
 
-  # Dynamic site services will be added here by site-manager.sh
-  # Example format:
-  # site_example_com:
-  #   build:
-  #     context: ./docker/frankenphp
-  #     args:
-  #       PHP_VERSION: 8.3
-  #   container_name: wpfleet_example_com
-  #   restart: unless-stopped
-  #   environment:
-  #     SERVER_NAME: example.com
-  #     DB_NAME: wp_example_com
-  #     DB_USER: ${MYSQL_USER}
-  #     DB_PASSWORD: ${MYSQL_PASSWORD}
-  #     DB_HOST: mariadb
-  #     REDIS_HOST: redis
-  #   volumes:
-  #     - ./data/wordpress/example_com:/var/www/html
-  #     - ./config/sites/example_com/Caddyfile:/etc/caddy/Caddyfile:ro
-  #   networks:
-  #     wpfleet:
-  #   depends_on:
-  #     mariadb:
-  #       condition: service_healthy
-  #     redis:
-  #       condition: service_healthy
-  #   labels:
-  #     - "wpfleet.site=example.com"
+  frankenphp:
+    build:
+      context: ./docker/frankenphp
+      args:
+        PHP_VERSION: ${PHP_VERSION:-8.3}
+    container_name: wpfleet_frankenphp
+    restart: unless-stopped
+    environment:
+      DB_HOST: mariadb
+      DB_USER: ${MYSQL_USER}
+      DB_PASSWORD: ${MYSQL_PASSWORD}
+      REDIS_HOST: redis
+      ACME_EMAIL: ${ACME_EMAIL}
+      WP_ADMIN_USER: ${WP_ADMIN_USER}
+      WP_ADMIN_PASSWORD: ${WP_ADMIN_PASSWORD}
+      WP_ADMIN_EMAIL: ${WP_ADMIN_EMAIL}
+    volumes:
+      - ./data/wordpress:/var/www/html
+      - ./config/caddy/Caddyfile:/etc/caddy/Caddyfile
+      - ./config/caddy/sites:/etc/caddy/sites
+      - ./data/logs:/var/log
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      wpfleet:
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    labels:
+      - "wpfleet.frankenphp=true"
+    mem_limit: ${FRANKENPHP_MEM_LIMIT:-2g}
+    cpus: ${FRANKENPHP_CPU_LIMIT:-2}

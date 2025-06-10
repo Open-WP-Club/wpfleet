@@ -1,0 +1,107 @@
+DOMAIN_PLACEHOLDER {
+    # Enable compression
+    encode zstd gzip
+    
+    # Security headers
+    header {
+        # Remove sensitive headers
+        -Server
+        -X-Powered-By
+        
+        # Security headers
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+        Referrer-Policy "no-referrer-when-downgrade"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        
+        # CSP - adjust as needed
+        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval';"
+        
+        # Permissions Policy
+        Permissions-Policy "geolocation=(), microphone=(), camera=()"
+    }
+    
+    # Set root directory for this site
+    root * /var/www/html/DOMAIN_PLACEHOLDER
+    
+    # Redirect www to non-www (or vice versa)
+    @www {
+        host www.DOMAIN_PLACEHOLDER
+    }
+    redir @www https://DOMAIN_PLACEHOLDER{uri} permanent
+    
+    # WordPress specific rules
+    @disallowed {
+        path /xmlrpc.php
+        path /wp-config.php
+        path /.user.ini
+        path /.htaccess
+        path /wp-content/debug.log
+        path */.*
+    }
+    
+    # Block access to sensitive files
+    respond @disallowed 403
+    
+    # Set environment variables for this site
+    @phpFiles {
+        path *.php
+    }
+    
+    handle @phpFiles {
+        # Site-specific environment variables
+        env SERVER_NAME DOMAIN_PLACEHOLDER
+        env DB_NAME DB_NAME_PLACEHOLDER
+        env WP_HOME https://DOMAIN_PLACEHOLDER
+        env WP_SITEURL https://DOMAIN_PLACEHOLDER
+    }
+    
+    # Handle WordPress permalinks
+    php_server {
+        # FrankenPHP specific settings
+        resolve_root_symlink
+        
+        # WordPress specific try_files directive
+        try_files {path} {path}/ /index.php?{query}
+        
+        # Site isolation
+        env PHP_VALUE "open_basedir=/var/www/html/DOMAIN_PLACEHOLDER:/tmp:/usr/share/php
+memory_limit=MEMORY_LIMIT_PLACEHOLDER
+max_execution_time=300
+upload_max_filesize=64M
+post_max_size=64M"
+    }
+    
+    # Cache static assets
+    @static {
+        path *.css *.js *.ico *.gif *.jpg *.jpeg *.png *.svg *.woff *.woff2 *.ttf *.eot
+    }
+    
+    header @static {
+        Cache-Control "public, max-age=31536000, immutable"
+    }
+    
+    # File upload size
+    request_body {
+        max_size 64MB
+    }
+    
+    # Logging
+    log {
+        output file /var/log/DOMAIN_PLACEHOLDER/access.log {
+            roll_size 100mb
+            roll_keep 5
+            roll_keep_for 720h
+        }
+        format json
+    }
+    
+    # Enable file server for static files
+    file_server
+    
+    # Handle 404s
+    handle_errors {
+        respond "{http.error.status_code} {http.error.status_text}"
+    }
+}

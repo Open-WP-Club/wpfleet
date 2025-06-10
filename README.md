@@ -28,7 +28,7 @@ WPFleet is a production-ready, scalable solution for hosting multiple WordPress 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/wpfleet.git
+git clone https://github.com/Open-WP-Club/WPFleet
 cd wpfleet
 ```
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# WPFleet Health Check Script
+# WPFleet Health Check Script 
 # Monitor the health of all WPFleet services
 
 set -e
@@ -58,6 +58,13 @@ check_service() {
     fi
 }
 
+# Function to get all sites
+get_all_sites() {
+    find "$PROJECT_ROOT/config/caddy/sites" -name "*.caddy" 2>/dev/null | while read f; do
+        basename "$f" .caddy
+    done | sort
+}
+
 # Main health check
 echo "WPFleet Health Check Report"
 echo "=========================="
@@ -68,6 +75,7 @@ echo ""
 print_header "Core Services"
 check_service "MariaDB" "wpfleet_mariadb"
 check_service "Redis" "wpfleet_redis"
+check_service "FrankenPHP" "wpfleet_frankenphp"
 
 # Check MariaDB connectivity
 print_header "Database Connectivity"
@@ -93,26 +101,45 @@ else
     print_error "Redis is not responding"
 fi
 
+# Check FrankenPHP/Caddy
+print_header "Web Server Status"
+if docker exec wpfleet_frankenphp curl -sf http://localhost:8080/health >/dev/null 2>&1; then
+    print_ok "FrankenPHP health check passed"
+else
+    print_error "FrankenPHP health check failed"
+fi
+
+# Check Caddy configuration
+if docker exec wpfleet_frankenphp caddy validate --config /etc/caddy/Caddyfile >/dev/null 2>&1; then
+    print_ok "Caddy configuration is valid"
+else
+    print_error "Caddy configuration is invalid"
+fi
+
 # Check WordPress sites
 print_header "WordPress Sites"
-sites=$(docker ps --filter "label=wpfleet.site" --format "{{.Names}}" | sort)
+sites=$(get_all_sites)
 if [ -z "$sites" ]; then
     print_warning "No WordPress sites found"
 else
-    for container in $sites; do
-        domain=$(echo "$container" | sed 's/wpfleet_//')
-        if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-            # Check if container is running
-            if [ "$(docker inspect --format='{{.State.Running}}' "$container")" = "true" ]; then
-                # Check WordPress health
-                if docker exec "$container" curl -sf http://localhost/health >/dev/null 2>&1; then
-                    print_ok "$domain - Container running, health check passed"
+    for domain in $sites; do
+        if [ -d "$PROJECT_ROOT/data/wordpress/$domain" ]; then
+            # Check if WordPress is installed
+            if [ -f "$PROJECT_ROOT/data/wordpress/$domain/wp-config.php" ]; then
+                # Get site size
+                site_size=$(du -sh "$PROJECT_ROOT/data/wordpress/$domain" 2>/dev/null | cut -f1)
+                
+                # Check if site responds
+                if docker exec wpfleet_frankenphp curl -sf -H "Host: $domain" http://localhost >/dev/null 2>&1; then
+                    print_ok "$domain - Active (Size: $site_size)"
                 else
-                    print_warning "$domain - Container running, health check failed"
+                    print_warning "$domain - Not responding (Size: $site_size)"
                 fi
             else
-                print_error "$domain - Container not running"
+                print_warning "$domain - WordPress not installed"
             fi
+        else
+            print_error "$domain - Directory missing"
         fi
     done
 fi
@@ -126,23 +153,19 @@ print_header "Docker Resources"
 container_count=$(docker ps -q | wc -l)
 print_ok "Running containers: $container_count"
 
-# Memory usage
-total_memory=$(docker stats --no-stream --format "{{.MemUsage}}" | awk '{sum += $1} END {print sum}')
-print_ok "Total memory usage: Check 'docker stats' for details"
-
-# Check for stopped containers
-stopped_count=$(docker ps -a -q -f status=exited -f label=wpfleet.site | wc -l)
-if [ "$stopped_count" -gt 0 ]; then
-    print_warning "Stopped WPFleet containers: $stopped_count"
-fi
+# Container stats
+print_header "Container Resources"
+docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsage}}" | grep wpfleet || true
 
 # Check for errors in logs
 print_header "Recent Errors (last 24h)"
-for container in wpfleet_mariadb wpfleet_redis $sites; do
+for container in wpfleet_mariadb wpfleet_redis wpfleet_frankenphp; do
     if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
         error_count=$(docker logs --since 24h "$container" 2>&1 | grep -iE "(error|fatal|critical)" | wc -l)
         if [ "$error_count" -gt 0 ]; then
             print_warning "$container: $error_count errors in logs"
+        else
+            print_ok "$container: No errors in logs"
         fi
     fi
 done
@@ -151,15 +174,20 @@ done
 echo ""
 print_header "Summary"
 if check_service "MariaDB" "wpfleet_mariadb" >/dev/null 2>&1 && \
-   check_service "Redis" "wpfleet_redis" >/dev/null 2>&1; then
-    print_ok "Core services are healthy"
+   check_service "Redis" "wpfleet_redis" >/dev/null 2>&1 && \
+   check_service "FrankenPHP" "wpfleet_frankenphp" >/dev/null 2>&1; then
+    print_ok "All core services are healthy"
+    echo ""
+    site_count=$(echo "$sites" | wc -w)
+    print_ok "Total sites configured: $site_count"
 else
     print_error "Some core services are unhealthy"
 fi
 
-# Recommendations
-if [ "$stopped_count" -gt 0 ]; then
-    echo ""
-    print_header "Recommendations"
-    print_warning "Remove stopped containers: docker container prune -f"
-fi
+# PHP Info
+echo ""
+print_header "PHP Configuration"
+php_version=$(docker exec wpfleet_frankenphp php -v | head -1)
+print_ok "PHP Version: $php_version"
+memory_limit=$(docker exec wpfleet_frankenphp php -r "echo ini_get('memory_limit');" 2>/dev/null)
+print_ok "Default Memory Limit: $memory_limit"

@@ -12,10 +12,15 @@ RUN apk add --no-cache \
   libjpeg-turbo-dev \
   libpng-dev \
   libwebp-dev \
+  libavif-dev \
+  imagemagick-dev \
+  graphicsmagick-dev \
+  # Other required libraries
   libzip-dev \
   icu-dev \
   libxml2-dev \
-  imagemagick-dev \
+  gettext-dev \
+  libmcrypt-dev \
   # Tools
   bash \
   curl \
@@ -29,6 +34,7 @@ RUN apk add --no-cache \
   --with-freetype \
   --with-jpeg \
   --with-webp \
+  --with-avif \
   && docker-php-ext-install -j$(nproc) \
   gd \
   mysqli \
@@ -39,8 +45,19 @@ RUN apk add --no-cache \
   bcmath \
   soap \
   opcache \
-  && pecl install redis imagick \
-  && docker-php-ext-enable redis imagick \
+  gettext \
+  calendar \
+  sockets \
+  && pecl install \
+  redis \
+  imagick \
+  gmagick \
+  apcu \
+  && docker-php-ext-enable \
+  redis \
+  imagick \
+  gmagick \
+  apcu \
   && apk del $PHPIZE_DEPS linux-headers \
   && rm -rf /var/cache/apk/*
 
@@ -59,28 +76,28 @@ RUN adduser -D -H -u 1000 -s /bin/bash www-data 2>/dev/null || true
 RUN mkdir -p /var/www/html \
   && chown -R www-data:www-data /var/www/html
 
-# Copy Caddyfile template
-COPY Caddyfile.template /etc/caddy/Caddyfile.template
+# Copy Caddyfile template (not used in single container setup)
+# COPY Caddyfile.template /etc/caddy/Caddyfile.template
 
 # Set working directory
 WORKDIR /var/www/html
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost/health || exit 1
+  CMD curl -f http://localhost:8080/health || exit 1
 
 # Switch to www-data user
 USER www-data
 
 # Set FrankenPHP specific environment variables
-ENV FRANKENPHP_CONFIG="worker /var/www/html/index.php"
+ENV FRANKENPHP_CONFIG=""
 ENV PHP_FPM_PM="dynamic"
 ENV PHP_FPM_PM_MAX_CHILDREN="50"
 ENV PHP_FPM_PM_START_SERVERS="5"
 ENV PHP_FPM_PM_MIN_SPARE_SERVERS="5"
 ENV PHP_FPM_PM_MAX_SPARE_SERVERS="35"
 
-# Entrypoint script to configure Caddy based on environment
+# Entrypoint script to configure environment
 COPY --chown=www-data:www-data docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
