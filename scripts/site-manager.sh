@@ -16,6 +16,18 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+validate_domain() {
+    if [[ -z "$1" ]]; then
+        print_error "Domain cannot be empty"
+        return 1
+    fi
+    if [[ ! "$1" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*[a-zA-Z0-9]$ ]]; then
+        print_error "Invalid domain format: $1"
+        return 1
+    fi
+    return 0
+}
+
 # Load environment variables
 if [ -f "$PROJECT_ROOT/.env" ]; then
 export $(cat "$PROJECT_ROOT/.env" | grep -v '^#' | xargs)
