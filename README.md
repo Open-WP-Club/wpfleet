@@ -4,14 +4,15 @@ WPFleet is a production-ready, scalable solution for hosting multiple WordPress 
 
 ## Features
 
-- 🚀 **FrankenPHP** - Modern PHP application server with built-in Caddy
-- 🔒 **Automatic SSL** - Let's Encrypt certificates via Caddy
-- 💾 **Shared MariaDB** - Single database server with isolated databases
-- ⚡ **Redis Caching** - Object cache for improved performance
-- 🛠️ **WP-CLI** - Built-in WordPress command-line interface
-- 🔐 **Security First** - Isolated containers, security headers, and best practices
-- 📊 **Resource Management** - CPU and memory limits per site
-- 🎯 **Easy Management** - Simple scripts for common tasks
+- **FrankenPHP** - Modern PHP application server with built-in Caddy
+- **Automatic SSL** - Let's Encrypt certificates via Caddy
+- **Shared MariaDB** - Single database server with isolated databases
+- **Redis Caching** - Object cache for improved performance
+- **WP-CLI** - Built-in WordPress command-line interface
+- **Security First** - Isolated containers, security headers, and best practices
+- **Resource Management** - CPU and memory limits per site
+- **Easy Management** - Simple scripts for common tasks
+- **Migration Support** - Import WordPress sites from archives and database dumps
 
 ## Requirements
 
@@ -28,7 +29,7 @@ WPFleet is a production-ready, scalable solution for hosting multiple WordPress 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/Open-WP-Club/WPFleet
+git clone https://github.com/Open-WP-Club/wpfleet
 cd wpfleet
 ```
 
@@ -55,247 +56,189 @@ docker-compose up -d mariadb redis
 
 ### 5. Add Your First Site
 
+Choose from three installation modes:
+
+**Clean WordPress Installation (default)**
+
 ```bash
 ./scripts/site-manager.sh add example.com
+```
+
+**Skip Installation (infrastructure only)**
+
+```bash
+./scripts/site-manager.sh add example.com --skip-install
+```
+
+**Import Existing Site**
+
+```bash
+./scripts/site-manager.sh add example.com --import-from
+```
+
+## Site Installation Modes
+
+WPFleet supports three different ways to add WordPress sites:
+
+### Clean Installation (Default)
+
+```bash
+./scripts/site-manager.sh add example.com
+```
+
+**Best for:** New WordPress sites from scratch
+
+**What it does:**
+
+- Downloads latest WordPress core
+- Creates fresh database
+- Installs and configures Redis Object Cache
+- Sets up optimized `wp-config.php`
+- Creates admin user with generated password
+- Applies security and performance settings
+
+### Skip Installation
+
+```bash
+./scripts/site-manager.sh add example.com --skip-install
+```
+
+**Best for:** Custom installations, advanced users, or manual migrations
+
+**What it does:**
+
+- Creates database and file directories
+- Sets up Caddy routing and SSL
+- Shows database connection information
+- **You handle:** WordPress installation, configuration, file uploads
+
+**Output example:**
+
+```
+Database Information:
+  Database Name: wp_example_com
+  Database User: wpfleet
+  Database Password: your_password
+  Database Host: mariadb (or localhost:3306 from host)
+
+Site Information:
+  Files Directory: /path/to/wpfleet/data/wordpress/example.com
+  Container Path: /var/www/html/example.com
+  Site URL: https://example.com
+```
+
+### Import Existing Site
+
+```bash
+./scripts/site-manager.sh add example.com --import-from
+```
+
+**Best for:** Migrating existing WordPress sites to WPFleet
+
+**What it does:**
+
+- Creates infrastructure (database, directories, routing)
+- Prompts for database backup file (`.sql` or `.sql.gz`)
+- Prompts for files archive (`.tar.gz` or `.zip`)
+- Imports database and extracts files
+- Updates `wp-config.php` with new database settings
+- Adds Redis configuration
+
+**Migration Process:**
+
+1. Export your existing site's database
+2. Create archive of WordPress files
+3. Run the import command
+4. Provide paths when prompted
+5. Site becomes immediately available
+
+**Supported formats:**
+
+- Database: `.sql`, `.sql.gz`
+- Files: `.tar.gz`, `.zip`
+
+## Migration Guide
+
+### Migrating from Another Host
+
+**Step 1: Prepare your existing site**
+
+```bash
+# On your old server
+mysqldump -u username -p database_name > site_backup.sql
+tar -czf site_files.tar.gz /path/to/wordpress/
+```
+
+**Step 2: Transfer files to WPFleet server**
+
+```bash
+scp site_backup.sql site_files.tar.gz user@wpfleet-server:/path/to/wpfleet/
+```
+
+**Step 3: Import to WPFleet**
+
+```bash
+./scripts/site-manager.sh add yourdomain.com --import-from
+# When prompted:
+# Database file: ./site_backup.sql
+# Files archive: ./site_files.tar.gz
+```
+
+**Step 4: Update DNS**
+
+- Point your domain to the new server
+- WPFleet will automatically get SSL certificates
+
+### Migrating Between WPFleet Sites
+
+Use the built-in backup and restore functionality:
+
+```bash
+# Export from existing site
+./scripts/backup.sh site olddomain.com
+
+# Import to new site structure
+./scripts/site-manager.sh add newdomain.com --import-from
+# Use the backup files from previous step
+```
+
+### URL Search and Replace
+
+If you need to change URLs after migration:
+
+```bash
+./scripts/db-manager.sh search-replace newdomain.com 'http://olddomain.com' 'https://newdomain.com'
 ```
 
 ## Usage
 
 ### Managing Sites
 
-#### Add a new site
+#### Add a new site (clean WordPress installation)
 
 ```bash
 ./scripts/site-manager.sh add example.com
 ```
 
-#### Add a site with specific PHP version
+This creates a fresh WordPress installation with:
+
+- Latest WordPress core
+- Clean database
+- Redis Object Cache plugin
+- Optimized configuration
+- Admin user with generated password
+
+#### Skip WordPress installation (infrastructure only)
 
 ```bash
-./scripts/site-manager.sh add example.com 8.2
+./scripts/site-manager.sh add example.com --skip-install
 ```
 
-#### List all sites
-
-```bash
-./scripts/site-manager.sh list
-```
-
-#### Remove a site
-
-```bash
-./scripts/site-manager.sh remove example.com
-```
-
-#### Restart a site
-
-```bash
-./scripts/site-manager.sh restart example.com
-```
-
-### Using WP-CLI
-
-#### Execute WP-CLI commands
-
-```bash
-./scripts/wp-cli.sh example.com plugin list
-./scripts/wp-cli.sh example.com user create john john@example.com --role=editor
-./scripts/wp-cli.sh example.com theme activate twentytwentyfour
-```
-
-#### Open interactive WP-CLI shell
-
-```bash
-./scripts/wp-cli.sh example.com shell
-```
-
-#### Open bash shell in container
-
-```bash
-./scripts/wp-cli.sh example.com shell
-```
-
-### Database Management
-
-#### Open MySQL shell
-
-```bash
-./scripts/db-manager.sh shell
-```
-
-#### Export a site's database
-
-```bash
-./scripts/db-manager.sh export example.com
-```
-
-#### Export all databases
-
-```bash
-./scripts/db-manager.sh export all
-```
-
-#### Import database
-
-```bash
-./scripts/db-manager.sh import example.com /path/to/backup.sql
-```
-
-#### Search and replace
-
-```bash
-./scripts/db-manager.sh search-replace example.com 'http://old.com' 'https://new.com'
-```
-
-## Architecture
-
-### Container Structure
-
-Each WordPress site runs in its own FrankenPHP container with:
-
-- Isolated filesystem
-- Dedicated Caddy configuration
-- Automatic SSL certificate management
-- Resource limits (CPU/Memory)
-- Access to shared MariaDB and Redis
-
-### Network Architecture
-
-- All containers communicate on an isolated Docker network
-- MariaDB and Redis are only accessible within the Docker network
-- Each site container exposes ports 80/443 with Caddy handling SSL
-
-### Data Persistence
-
-- **WordPress Files**: `./data/wordpress/{domain}/`
-- **MariaDB Data**: Docker volume `mariadb_data`
-- **Redis Data**: Docker volume `redis_data`
-- **Logs**: `./data/logs/{domain}/`
-- **Configurations**: `./config/sites/{domain}/`
-
-## Security
-
-### Built-in Security Features
-
-1. **Container Isolation**: Each site runs in its own container
-2. **Network Isolation**: Internal Docker network for service communication
-3. **Security Headers**: Automatically applied by Caddy
-4. **SSL/TLS**: Automatic Let's Encrypt certificates
-5. **Database Isolation**: Separate database per site
-6. **Limited PHP Functions**: Dangerous functions disabled
-7. **Read-only Configs**: Configuration files mounted read-only
-
-### SSH-Only Database Access
-
-Database management is restricted to SSH access only. No web-based tools are exposed.
-
-### Fail2ban Integration (Host Configuration)
-
-To enable Fail2ban, configure on your host system:
-
-1. Install Fail2ban:
-
-```bash
-sudo apt-get install fail2ban
-```
-
-2. Copy the provided configuration:
-
-```bash
-sudo cp config/fail2ban/jail.local /etc/fail2ban/
-sudo cp config/fail2ban/filter.d/* /etc/fail2ban/filter.d/
-```
-
-3. Restart Fail2ban:
-
-```bash
-sudo systemctl restart fail2ban
-```
-
-## Performance Optimization
-
-### Redis Object Cache
-
-Redis is automatically configured for each site. The Redis Cache plugin is installed and activated by default.
-
-### PHP-FPM Tuning
-
-PHP-FPM settings are optimized for WordPress:
-
-- OPcache enabled with optimal settings
-- Memory limits configured for WordPress
-- Execution time increased for complex operations
-
-### Resource Limits
-
-Default limits per site (configurable in `.env`):
-
-- Memory: 512MB
-- CPU: 0.5 cores
-
-Adjust based on your server capacity and site requirements.
-
-## Backup Strategy
-
-### Manual Backups
-
-#### Full site backup
-
-```bash
-# Database
-./scripts/db-manager.sh export example.com
-
-# Files
-tar -czf backup_example_com_files.tar.gz -C data/wordpress example.com
-```
-
-### Automated Backups
-
-Create a cron job for automated backups:
-
-```bash
-# Edit crontab
-crontab -e
-
-# Add daily backup at 3 AM
-0 3 * * * /path/to/wpfleet/scripts/backup.sh all
-```
-
-## Troubleshooting
-
-### Check Container Logs
-
-```bash
-# All logs for a site
-docker logs wpfleet_example_com
-
-# Follow logs
-docker logs -f wpfleet_example_com
-
-# Last 100 lines
-docker logs --tail 100 wpfleet_example_com
-```
-
-### Common Issues
-
-#### Site not accessible
-
-1. Check DNS is pointing to your server
-2. Verify ports 80/443 are open
-3. Check container is running: `docker ps | grep example_com`
-4. Review Caddy logs for SSL issues
-
-#### Database connection errors
-
-1. Verify MariaDB is running: `docker ps | grep mariadb`
-2. Check database exists: `./scripts/db-manager.sh list`
-3. Verify credentials in container environment
-
-#### Performance issues
-
-1. Check Redis is working: `docker exec wpfleet_example_com wp redis status`
-2. Monitor resource usage: `docker stats`
-3. Review slow query log in MariaDB
+This creates only the infrastructure:
+
+- Database and directories
+- Caddy routing configuration
+- Shows database
 
 ## Scaling Considerations
 
