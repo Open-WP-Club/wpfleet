@@ -19,7 +19,8 @@ volumes:
 
 services:
   mariadb:
-    image: mariadb:11
+    build:
+      context: ./docker/mariadb
     container_name: wpfleet_mariadb
     restart: unless-stopped
     environment:
