@@ -1,25 +1,75 @@
 {
+    # Global FrankenPHP configuration
+    frankenphp {
+        # Worker configuration for better performance
+        worker {
+            file /var/www/html/worker.php
+            num {$FRANKENPHP_NUM_THREADS:4}
+            max_requests {$FRANKENPHP_WORKER_MAX_REQUESTS:1000}
+            watch
+        }
+        
+        # Thread configuration
+        num_threads {$FRANKENPHP_NUM_THREADS:auto}
+        max_threads {$FRANKENPHP_MAX_THREADS:auto}
+    }
+    
     # Enable debug mode if needed
     # debug
     
     # Global options
     email {$ACME_EMAIL:admin@{$SERVER_NAME}}
     
+    # Admin API for monitoring
+    admin :2019 {
+        origins 127.0.0.1 ::1
+    }
+    
     # Security headers
     servers {
         protocols h1 h2 h3
+        max_header_size 32KB
+        read_timeout 30s
+        write_timeout 30s
+        idle_timeout 120s
+        
+        # Enable metrics
+        metrics
+    }
+    
+    # Global logging
+    log {
+        output file /var/log/frankenphp/global.log {
+            roll_size 100MB
+            roll_keep 10
+            roll_keep_for 168h
+        }
+        format json
+        level INFO
     }
 }
 
 # Health check endpoint (internal only)
-:80 {
-    respond /health "OK" 200
+:8080 {
+    respond /health "OK" 200 {
+        header Content-Type "text/plain"
+        header Cache-Control "no-cache"
+    }
+    
+    # Metrics endpoint
+    handle /metrics {
+        metrics
+    }
 }
 
 # Main site configuration
 {$SERVER_NAME:localhost} {
     # Enable compression
-    encode zstd gzip
+    encode {
+        zstd
+        gzip 6
+        minimum_length 1024
+    }
     
     # Security headers
     header {
@@ -31,7 +81,7 @@
         X-Frame-Options "SAMEORIGIN"
         X-Content-Type-Options "nosniff"
         X-XSS-Protection "1; mode=block"
-        Referrer-Policy "no-referrer-when-downgrade"
+        Referrer-Policy "strict-origin-when-cross-origin"
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
         
         # CSP - adjust as needed
@@ -44,7 +94,7 @@
     # PHP-FPM via FrankenPHP
     root * /var/www/html
     
-    # Redirect www to non-www (or vice versa)
+    # Redirect www to non-www
     @www {
         host www.{$SERVER_NAME}
     }
@@ -61,38 +111,66 @@
         path /.user.ini
         path /.htaccess
         path /wp-content/debug.log
+        path /wp-content/backups/*
         path */.*
     }
     
     # Block access to sensitive files
     respond @disallowed 403
     
-    # Handle WordPress permalinks
+    # Handle WordPress permalinks with enhanced PHP processing
     php_server {
         # FrankenPHP specific settings
         resolve_root_symlink
         
         # WordPress specific try_files directive
         try_files {path} {path}/ /index.php?{query}
+        
+        # Enhanced environment variables
+        env PHP_VALUE "
+            memory_limit=512M
+            max_execution_time=300
+            upload_max_filesize=128M
+            post_max_size=128M
+            max_input_vars=5000
+            opcache.enable=1
+            opcache.validate_timestamps=0
+            realpath_cache_size=4096K
+            realpath_cache_ttl=600
+        "
+        
+        # Performance settings
+        read_timeout 300s
+        write_timeout 300s
     }
     
-    # Cache static assets
+    # Cache static assets with better performance
     @static {
-        path *.css *.js *.ico *.gif *.jpg *.jpeg *.png *.svg *.woff *.woff2 *.ttf *.eot
+        path *.css *.js *.ico *.gif *.jpg *.jpeg *.png *.svg *.woff *.woff2 *.ttf *.eot *.webp *.avif
     }
     
     header @static {
         Cache-Control "public, max-age=31536000, immutable"
+        Vary "Accept-Encoding"
+    }
+    
+    # Cache uploads
+    @uploads {
+        path /wp-content/uploads/*
+    }
+    
+    header @uploads {
+        Cache-Control "public, max-age=86400"
     }
     
     # File upload size
     request_body {
-        max_size 64MB
+        max_size 128MB
     }
     
-    # Logging
+    # Enhanced logging
     log {
-        output file /var/log/caddy/access.log {
+        output file /var/log/frankenphp/access.log {
             roll_size 100mb
             roll_keep 5
             roll_keep_for 720h
@@ -101,10 +179,21 @@
     }
     
     # Enable file server for static files
-    file_server
+    file_server {
+        precompressed gzip br
+    }
     
-    # Handle 404s
+    # Handle 404s gracefully
     handle_errors {
+        @404 {
+            expression {http.error.status_code} == 404
+        }
+        
+        handle @404 {
+            rewrite * /index.php
+            php_server
+        }
+        
         respond "{http.error.status_code} {http.error.status_text}"
     }
 }
