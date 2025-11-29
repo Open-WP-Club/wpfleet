@@ -229,24 +229,31 @@ The dashboard shows:
 - Recent errors
 - Disk usage
 
-### Security with Fail2ban
+### Security & DDoS Protection
 
-Protect your sites from brute force attacks:
+**Built-in Rate Limiting:**
+
+WPFleet includes Caddy-based rate limiting for WordPress endpoints:
+- Login page: 5 requests/minute per IP
+- XML-RPC: 5 requests/minute per IP
+- WP-Admin: 30 requests/minute per IP
+
+**Cloudflare Protection (Recommended):**
+
+For production sites, use Cloudflare for enterprise-grade protection:
 
 ```bash
-sudo ./scripts/setup-fail2ban.sh
+./scripts/setup-cloudflare.sh  # Shows setup guide
 ```
 
-Monitors and blocks:
-- WordPress login failures
-- XML-RPC abuse
-- File scanning attempts
-- Repeated 404 errors
+Benefits:
+- DDoS protection (automatic)
+- WAF (Web Application Firewall)
+- Rate limiting (before hitting your server)
+- CDN for faster load times
+- Free tier available
 
-Check banned IPs:
-```bash
-sudo fail2ban-client status wpfleet-login
-```
+> **Why not Fail2ban?** Fail2ban conflicts with Docker's iptables management, causing unreliable bans and potential security gaps. Cloudflare + Caddy rate limiting is the Docker-native solution.
 
 ### SSL Certificate Monitoring
 
