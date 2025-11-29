@@ -255,6 +255,139 @@ This creates only the infrastructure:
 - Consider separate database server
 - Use load balancer for multiple instances
 
+## Troubleshooting
+
+### Installation Issues
+
+**Docker Installation Problems**
+
+If you don't have Docker installed, use the provided utility script:
+
+```bash
+sudo ./install_util.sh
+```
+
+This script automatically installs Docker Engine and Docker Compose on Ubuntu/Debian systems.
+
+**Permission Denied Errors**
+
+If you get permission errors with Docker:
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+### SSL Certificate Issues
+
+**Certificates Not Being Issued**
+
+1. Verify DNS is pointing to your server:
+   ```bash
+   dig +short yourdomain.com
+   ```
+
+2. Check ports 80 and 443 are accessible:
+   ```bash
+   sudo netstat -tlnp | grep -E ':(80|443)'
+   ```
+
+3. View Caddy logs:
+   ```bash
+   docker logs wpfleet_frankenphp | grep -i acme
+   ```
+
+**Monitor SSL Certificate Status**
+
+```bash
+./scripts/ssl-monitor.sh
+```
+
+This checks all configured sites and warns about expiring certificates (< 30 days).
+
+### Database Connection Issues
+
+**Cannot Connect to MariaDB**
+
+Port 3306 is not exposed to the host for security. Use:
+
+```bash
+# From host - use docker exec
+docker exec -it wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD}
+
+# Or create SSH tunnel
+ssh -L 3306:localhost:3306 user@your-server
+# Then connect to localhost:3306 from your local machine
+```
+
+**Database Performance Issues**
+
+Check MariaDB status:
+
+```bash
+docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "SHOW STATUS"
+```
+
+### Redis Connection Issues
+
+**WordPress Not Using Redis Cache**
+
+Verify Redis is working:
+
+```bash
+docker exec wpfleet_redis redis-cli -a ${REDIS_PASSWORD} ping
+```
+
+Check if Redis Object Cache plugin is active:
+
+```bash
+./scripts/wp-cli.sh yourdomain.com plugin list | grep redis-cache
+```
+
+### Site Not Loading
+
+**502 Bad Gateway**
+
+1. Check FrankenPHP is running:
+   ```bash
+   docker ps | grep frankenphp
+   ```
+
+2. Restart FrankenPHP:
+   ```bash
+   ./scripts/site-manager.sh restart
+   ```
+
+3. Check logs:
+   ```bash
+   docker logs wpfleet_frankenphp
+   ```
+
+**404 Errors**
+
+Verify site directory and Caddy configuration:
+
+```bash
+ls -la data/wordpress/yourdomain.com
+ls -la config/caddy/sites/yourdomain.com.caddy
+```
+
+### Health Check
+
+Run comprehensive health check:
+
+```bash
+./scripts/health-check.sh
+```
+
+This checks:
+- Core services (MariaDB, Redis, FrankenPHP)
+- Database connectivity
+- Redis connectivity
+- Site configurations
+- Disk usage
+- Recent errors in logs
+
 ## Contributing
 
 1. Fork the repository
