@@ -35,8 +35,7 @@ services:
     networks:
       wpfleet:
         ipv4_address: 172.20.0.2
-    ports:
-      - "127.0.0.1:3306:3306"
+    # Port 3306 not exposed to host for security - use docker exec or SSH tunnel
     command: 
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -54,6 +53,8 @@ services:
     image: redis:7-alpine
     container_name: wpfleet_redis
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
       - redis_data:/data
       - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
@@ -62,9 +63,9 @@ services:
         ipv4_address: 172.20.0.3
     ports:
       - "127.0.0.1:6379:6379"
-    command: redis-server /usr/local/etc/redis/redis.conf
+    command: sh -c "envsubst < /usr/local/etc/redis/redis.conf > /tmp/redis.conf && redis-server /tmp/redis.conf"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "sh", "-c", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -81,6 +82,7 @@ services:
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
       REDIS_HOST: redis
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       ACME_EMAIL: ${ACME_EMAIL}
       WP_ADMIN_USER: ${WP_ADMIN_USER}
       WP_ADMIN_PASSWORD: ${WP_ADMIN_PASSWORD}

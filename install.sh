@@ -64,7 +64,7 @@ print_success "Docker Compose found"
 
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then
-    print_warning "Running as root. It's recommended to run as a regular user with docker permissions."
+    print_info "Running as root. It's recommended to run as a regular user with docker permissions."
 fi
 
 # Create directory structure
@@ -114,24 +114,27 @@ fi
 # Generate secure passwords
 if grep -q "your_secure_root_password_here" .env; then
     print_info "Generating secure passwords..."
-    
+
     MYSQL_ROOT_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
     MYSQL_USER_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+    REDIS_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
     WP_ADMIN_PASS=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
-    
+
     # Update .env file based on OS
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
         sed -i '' "s/your_secure_root_password_here/$MYSQL_ROOT_PASS/g" .env
         sed -i '' "s/your_secure_password_here/$MYSQL_USER_PASS/g" .env
+        sed -i '' "s/generate_secure_redis_password_here/$REDIS_PASS/g" .env
         sed -i '' "s/generate_secure_password_here/$WP_ADMIN_PASS/g" .env
     else
         # Linux
         sed -i "s/your_secure_root_password_here/$MYSQL_ROOT_PASS/g" .env
         sed -i "s/your_secure_password_here/$MYSQL_USER_PASS/g" .env
+        sed -i "s/generate_secure_redis_password_here/$REDIS_PASS/g" .env
         sed -i "s/generate_secure_password_here/$WP_ADMIN_PASS/g" .env
     fi
-    
+
     print_success "Generated secure passwords"
 fi
 
