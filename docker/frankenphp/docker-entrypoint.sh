@@ -67,16 +67,28 @@ wait_for_db() {
 setup_logging() {
     local dirs=(
         "/var/log/frankenphp"
-        "/var/log/php" 
+        "/var/log/php"
         "/var/cache/frankenphp"
     )
-    
+
     for dir in "${dirs[@]}"; do
         mkdir -p "$dir"
         chown www-data:www-data "$dir" 2>/dev/null || true
         chmod 755 "$dir"
     done
-    
+
+    # Create site-specific log directories
+    if [ -d "/var/www/html" ]; then
+        for site_dir in /var/www/html/*/; do
+            if [ -d "$site_dir" ]; then
+                site_name=$(basename "$site_dir")
+                mkdir -p "/var/log/frankenphp/${site_name}"
+                chown www-data:www-data "/var/log/frankenphp/${site_name}" 2>/dev/null || true
+                chmod 755 "/var/log/frankenphp/${site_name}"
+            fi
+        done
+    fi
+
     # Create PHP error log
     touch /var/log/php/error.log
     chown www-data:www-data /var/log/php/error.log 2>/dev/null || true
@@ -105,46 +117,6 @@ $memoryThreshold = 400 * 1024 * 1024; // 400MB
 $startTime = time();
 $maxUptime = 3600; // 1 hour max uptime
 
-// Handler function
-$handler = static function () use (&$requestCount, $maxRequests, $memoryThreshold, $startTime, $maxUptime) {
-    $requestCount++;
-    $currentTime = time();
-    $uptime = $currentTime - $startTime;
-    $currentMemory = memory_get_usage(true);
-    
-    // Check restart conditions
-    $shouldRestart = false;
-    $reason = '';
-    
-    if ($requestCount >= $maxRequests) {
-        $shouldRestart = true;
-        $reason = "max requests reached ({$requestCount}/{$maxRequests})";
-    } elseif ($currentMemory >= $memoryThreshold) {
-        $shouldRestart = true;
-        $reason = "memory threshold exceeded (" . format_bytes($currentMemory) . ")";
-    } elseif ($uptime >= $maxUptime) {
-        $shouldRestart = true;
-        $reason = "max uptime exceeded ({$uptime}s)";
-    }
-    
-    if ($shouldRestart) {
-        error_log("Worker restart triggered: {$reason}");
-        return false;
-    }
-    
-    // Log status periodically
-    if ($requestCount % 100 === 0) {
-        error_log(sprintf(
-            'Worker status: requests=%d, memory=%s, uptime=%ds',
-            $requestCount,
-            format_bytes($currentMemory),
-            $uptime
-        ));
-    }
-    
-    return true;
-};
-
 // Helper function
 function format_bytes($bytes, $precision = 2) {
     $units = array('B', 'KB', 'MB', 'GB');
@@ -154,29 +126,54 @@ function format_bytes($bytes, $precision = 2) {
     return round($bytes, $precision) . ' ' . $units[$i];
 }
 
-// Main worker loop
-while (true) {
-    if (!$handler()) {
-        break; // Restart worker
+// Main worker loop - note: actual request handling is done by FrankenPHP
+// This script just manages worker lifecycle
+frankenphp_handle_request(function() use (&$requestCount, $maxRequests, $memoryThreshold, $startTime, $maxUptime) {
+    $requestCount++;
+    $currentTime = time();
+    $uptime = $currentTime - $startTime;
+    $currentMemory = memory_get_usage(true);
+
+    // Check restart conditions
+    if ($requestCount >= $maxRequests) {
+        error_log("Worker restart: max requests reached ({$requestCount}/{$maxRequests})");
+        return frankenphp_worker_restart();
     }
-    
-    // Process the request - this will be handled by FrankenPHP
-    // The actual request processing happens automatically
-    
+
+    if ($currentMemory >= $memoryThreshold) {
+        error_log("Worker restart: memory threshold exceeded (" . format_bytes($currentMemory) . ")");
+        return frankenphp_worker_restart();
+    }
+
+    if ($uptime >= $maxUptime) {
+        error_log("Worker restart: max uptime exceeded ({$uptime}s)");
+        return frankenphp_worker_restart();
+    }
+
+    // Log status periodically
+    if ($requestCount % 100 === 0) {
+        error_log(sprintf(
+            'Worker status: requests=%d, memory=%s, uptime=%ds',
+            $requestCount,
+            format_bytes($currentMemory),
+            $uptime
+        ));
+    }
+
     // Clean up after each request
     if (function_exists('wp_cache_flush')) {
         wp_cache_flush();
     }
-    
+
     // Force garbage collection periodically
     if ($requestCount % 50 === 0) {
         gc_collect_cycles();
     }
-}
+});
 
 error_log("Worker shutting down gracefully");
 EOF
-    
+
     chown www-data:www-data /var/www/html/worker.php 2>/dev/null || true
     chmod 644 /var/www/html/worker.php
 }
@@ -185,7 +182,8 @@ EOF
 optimize_opcache() {
     local site_count=0
     if [ -d "/var/www/html" ]; then
-        site_count=$(find /var/www/html -maxdepth 1 -type d -name "*.com" -o -name "*.org" -o -name "*.net" | wc -l)
+        # Count all directories in /var/www/html (excluding . and ..)
+        site_count=$(find /var/www/html -maxdepth 1 -type d ! -name "." ! -name ".." ! -name "html" | wc -l)
     fi
     
     if [ $site_count -gt 0 ]; then
