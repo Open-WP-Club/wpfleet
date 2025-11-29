@@ -210,6 +210,54 @@ If you need to change URLs after migration:
 ./scripts/db-manager.sh search-replace newdomain.com 'http://olddomain.com' 'https://newdomain.com'
 ```
 
+## Advanced Features
+
+### Real-Time Monitoring Dashboard
+
+Monitor all services in real-time:
+
+```bash
+./scripts/monitor.sh [refresh_interval]
+```
+
+The dashboard shows:
+- Container CPU/Memory usage
+- MariaDB statistics (queries, connections, slow queries)
+- Redis statistics (commands, hit rate)
+- OPcache statistics (hit rate, memory usage)
+- Active WordPress sites
+- Recent errors
+- Disk usage
+
+### Security with Fail2ban
+
+Protect your sites from brute force attacks:
+
+```bash
+sudo ./scripts/setup-fail2ban.sh
+```
+
+Monitors and blocks:
+- WordPress login failures
+- XML-RPC abuse
+- File scanning attempts
+- Repeated 404 errors
+
+Check banned IPs:
+```bash
+sudo fail2ban-client status wpfleet-login
+```
+
+### SSL Certificate Monitoring
+
+Check SSL certificate expiration:
+
+```bash
+./scripts/ssl-monitor.sh
+```
+
+Warns about certificates expiring within 30 days.
+
 ## Usage
 
 ### Managing Sites
