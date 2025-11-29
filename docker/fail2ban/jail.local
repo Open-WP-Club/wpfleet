@@ -1,0 +1,45 @@
+# Fail2ban jail configuration for WPFleet
+
+[DEFAULT]
+# Ban hosts for 24 hours:
+bantime = 86400
+
+# Find time window (10 minutes)
+findtime = 600
+
+# Number of failures before ban
+maxretry = 5
+
+# Ban action (iptables + email notification)
+action = %(action_mwl)s
+
+# Email settings (configure SMTP in environment)
+destemail = ${ACME_EMAIL}
+sender = fail2ban@wpfleet
+
+[wpfleet-login]
+enabled = true
+port = http,https
+filter = wpfleet
+logpath = /var/log/frankenphp/*/access.log
+maxretry = 5
+findtime = 300
+bantime = 3600
+
+[wpfleet-xmlrpc]
+enabled = true
+port = http,https
+filter = wpfleet
+logpath = /var/log/frankenphp/*/access.log
+maxretry = 3
+findtime = 60
+bantime = 86400
+
+[wpfleet-scan]
+enabled = true
+port = http,https
+filter = wpfleet
+logpath = /var/log/frankenphp/*/access.log
+maxretry = 10
+findtime = 300
+bantime = 86400

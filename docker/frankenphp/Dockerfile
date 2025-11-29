@@ -1,36 +1,20 @@
 ARG PHP_VERSION=8.3
 
-# Use Debian instead of Alpine for better performance (glibc vs musl)
-FROM dunglas/frankenphp:latest-php${PHP_VERSION}
+# Build stage - compile extensions
+FROM dunglas/frankenphp:latest-php${PHP_VERSION} AS builder
 
-# Install required PHP extensions and tools
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
-  # Build dependencies
   $PHPIZE_DEPS \
-  # Required libraries for WordPress
   libfreetype6-dev \
   libjpeg62-turbo-dev \
   libpng-dev \
   libwebp-dev \
   libavif-dev \
-  imagemagick \
   libmagickwand-dev \
   libzip-dev \
   libicu-dev \
   libxml2-dev \
-  gettext \
-  libmcrypt-dev \
-  # Tools for monitoring and debugging
-  htop \
-  iotop \
-  strace \
-  # For WP-CLI and management
-  less \
-  curl \
-  wget \
-  mariadb-client \
-  # For mailing
-  msmtp \
   && docker-php-ext-configure gd \
   --with-freetype \
   --with-jpeg \
@@ -52,59 +36,113 @@ RUN apt-get update && apt-get install -y \
   pcntl \
   posix \
   && pecl install \
-  redis \
-  imagick \
-  apcu \
+  redis-6.0.2 \
+  imagick-3.7.0 \
+  apcu-5.1.23 \
   && docker-php-ext-enable \
   redis \
   imagick \
-  apcu \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+  apcu
 
-# Install WP-CLI
-RUN curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
-  && chmod +x wp-cli.phar \
-  && mv wp-cli.phar /usr/local/bin/wp
+# Production stage
+FROM dunglas/frankenphp:latest-php${PHP_VERSION}
+
+# Copy compiled extensions from builder
+COPY --from=builder /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
+COPY --from=builder /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
+
+# Install runtime dependencies only (no dev packages)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  # Runtime libraries for PHP extensions
+  libfreetype6 \
+  libjpeg62-turbo \
+  libpng16-16 \
+  libwebp7 \
+  libavif15 \
+  imagemagick \
+  libmagickwand-6.q16-6 \
+  libzip4 \
+  libicu72 \
+  libxml2 \
+  # Essential tools
+  curl \
+  wget \
+  less \
+  mariadb-client \
+  # Mail support
+  msmtp \
+  ca-certificates \
+  # Process management
+  tini \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/cache/apt/*
+
+# Install WP-CLI with verification
+RUN curl -o /tmp/wp-cli.phar https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
+  && curl -o /tmp/wp-cli.phar.sha512 https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar.sha512 \
+  && sha512sum -c /tmp/wp-cli.phar.sha512 \
+  && chmod +x /tmp/wp-cli.phar \
+  && mv /tmp/wp-cli.phar /usr/local/bin/wp \
+  && rm /tmp/wp-cli.phar.sha512 \
+  && wp --info --allow-root
 
 # Copy PHP configuration
 COPY php.ini /usr/local/etc/php/conf.d/wpfleet.ini
 
-# Create www-data user if it doesn't exist
-RUN adduser --disabled-password --no-create-home --uid 1000 --shell /bin/bash www-data 2>/dev/null || true
+# Copy PHP-FPM pool configuration (if using PHP-FPM mode)
+COPY php-fpm-pool.conf /usr/local/etc/php-fpm.d/wpfleet.conf
 
-# Set up directory structure
+# Create necessary directories with proper permissions
 RUN mkdir -p \
   /var/www/html \
   /var/log/frankenphp \
   /var/log/php \
   /var/cache/frankenphp \
+  /var/cache/opcache \
   /etc/caddy/sites \
+  /run/php \
   && chown -R www-data:www-data \
   /var/www/html \
   /var/log/frankenphp \
   /var/log/php \
   /var/cache/frankenphp \
-  && chmod +x /usr/local/bin/docker-entrypoint.sh || true
+  /var/cache/opcache \
+  /run/php \
+  && chmod 755 /var/www/html \
+  && chmod 755 /var/log/frankenphp \
+  && chmod 755 /var/log/php
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD curl -f http://localhost:8080/health || exit 1
+# Copy entrypoint and health check scripts
+COPY docker-entrypoint.sh /usr/local/bin/
+COPY healthcheck.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+  && chmod +x /usr/local/bin/healthcheck.sh
+
+# Improved health check with detailed status
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+  CMD /usr/local/bin/healthcheck.sh
 
 WORKDIR /var/www/html
 
-# Environment variables for FrankenPHP
-ENV FRANKENPHP_CONFIG=""
-ENV FRANKENPHP_WORKER_ENABLED="true"
-ENV FRANKENPHP_NUM_THREADS="auto"
-ENV FRANKENPHP_MAX_THREADS="auto"
-ENV FRANKENPHP_WORKER_MAX_REQUESTS="1000"
+# Environment variables for FrankenPHP with better defaults
+ENV FRANKENPHP_CONFIG="" \
+  FRANKENPHP_WORKER_ENABLED="true" \
+  FRANKENPHP_NUM_THREADS="auto" \
+  FRANKENPHP_MAX_THREADS="auto" \
+  FRANKENPHP_WORKER_MAX_REQUESTS="1000" \
+  PHP_OPCACHE_PRELOAD="" \
+  PHP_MAX_EXECUTION_TIME="300" \
+  PHP_MEMORY_LIMIT="512M"
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh /usr/local/bin/
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
+# Use www-data user for security
 USER www-data
 
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+# Use tini for proper signal handling
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["frankenphp", "run", "--config", "/etc/caddy/Caddyfile"]
+
+# Labels for metadata
+LABEL maintainer="WPFleet <https://github.com/Open-WP-Club/wpfleet>" \
+  org.opencontainers.image.title="WPFleet FrankenPHP" \
+  org.opencontainers.image.description="Optimized FrankenPHP container for WordPress multi-site hosting" \
+  org.opencontainers.image.source="https://github.com/Open-WP-Club/wpfleet"
