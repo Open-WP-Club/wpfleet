@@ -79,23 +79,44 @@ update_caddyfile() {
         cat > "$site_config" << EOF
 # Site configuration for $domain
 $domain {
-    encode zstd gzip
+    # Enable compression with optimal settings
+    encode {
+        zstd
+        gzip 6
+        minimum_length 1024
+    }
 
     # Security headers
     header {
+        # Remove sensitive headers
         -Server
         -X-Powered-By
+        -X-Generator
+
+        # WordPress security headers
         X-Frame-Options "SAMEORIGIN"
         X-Content-Type-Options "nosniff"
         X-XSS-Protection "1; mode=block"
-        Referrer-Policy "no-referrer-when-downgrade"
+        Referrer-Policy "strict-origin-when-cross-origin"
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+        # CSP for WordPress (allows inline scripts/styles needed by WP admin)
+        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; img-src 'self' https: data:; font-src 'self' https: data:;"
+
+        # Permissions Policy
+        Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), bluetooth=()"
     }
 
     # Document root for this domain
     root * /var/www/html/$domain
 
-    # WordPress security rules
+    # Redirect www to non-www
+    @www {
+        host www.$domain
+    }
+    redir @www https://$domain{uri} permanent
+
+    # WordPress security rules - block dangerous files
     @disallowed {
         path /xmlrpc.php
         path /wp-config.php
@@ -103,26 +124,57 @@ $domain {
         path /.htaccess
         path /wp-content/debug.log
         path /wp-content/backups/*
+        path /wp-content/ai1wm-backups/*
         path */.*
+        path */.git/*
+        path */node_modules/*
+        path */vendor/*
     }
 
-    respond @disallowed 403
-
-    # Handle WordPress permalinks with FrankenPHP
-    php {
-        root /var/www/html/$domain
+    respond @disallowed 403 {
+        body "Access Denied"
+        close
     }
 
-    # Cache static assets
+    # Handle static assets with aggressive caching
     @static {
         path *.css *.js *.ico *.gif *.jpg *.jpeg *.png *.svg *.woff *.woff2 *.ttf *.eot *.webp *.avif
     }
 
     header @static {
         Cache-Control "public, max-age=31536000, immutable"
+        Vary "Accept-Encoding"
     }
 
-    file_server
+    # Handle media uploads with moderate caching
+    @uploads {
+        path /wp-content/uploads/*
+    }
+
+    header @uploads {
+        Cache-Control "public, max-age=86400"
+        Vary "Accept-Encoding"
+    }
+
+    # Handle WordPress with FrankenPHP
+    php {
+        root /var/www/html/$domain
+    }
+
+    file_server {
+        precompressed gzip br
+    }
+
+    # Site-specific logging
+    log {
+        output file /var/log/frankenphp/$domain/access.log {
+            roll_size 100MB
+            roll_keep 5
+            roll_keep_for 168h
+        }
+        format json
+        level INFO
+    }
 }
 EOF
 
