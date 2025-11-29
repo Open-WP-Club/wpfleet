@@ -229,31 +229,25 @@ The dashboard shows:
 - Recent errors
 - Disk usage
 
-### Security & DDoS Protection
+### Security & Protection
 
-**Built-in Rate Limiting:**
+**Built-in Security Features:**
 
-WPFleet includes Caddy-based rate limiting for WordPress endpoints:
-- Login page: 5 requests/minute per IP
-- XML-RPC: 5 requests/minute per IP
-- WP-Admin: 30 requests/minute per IP
+WPFleet includes multiple layers of security:
+- Automatic HTTPS with Let's Encrypt
+- Security headers (CSP, HSTS, X-Frame-Options, etc.)
+- Blocks access to sensitive files (wp-config.php, .git, etc.)
+- XML-RPC blocked by default
+- www to non-www redirect
 
-**Cloudflare Protection (Recommended):**
+**Recommended Additional Protection:**
 
-For production sites, use Cloudflare for enterprise-grade protection:
+For production sites, consider:
+- **CDN/DDoS Protection**: Cloudflare, AWS CloudFront, or similar
+- **WordPress Security Plugins**: Wordfence, iThemes Security, Sucuri
+- **Application-level security**: WordPress plugins handle rate limiting better with Docker
 
-```bash
-./scripts/setup-cloudflare.sh  # Shows setup guide
-```
-
-Benefits:
-- DDoS protection (automatic)
-- WAF (Web Application Firewall)
-- Rate limiting (before hitting your server)
-- CDN for faster load times
-- Free tier available
-
-> **Why not Fail2ban?** Fail2ban conflicts with Docker's iptables management, causing unreliable bans and potential security gaps. Cloudflare + Caddy rate limiting is the Docker-native solution.
+> **Note on Fail2ban:** Not recommended with Docker due to iptables conflicts. Use application-level security and CDN protection instead.
 
 ### SSL Certificate Monitoring
 
