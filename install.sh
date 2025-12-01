@@ -67,12 +67,16 @@ if [ "$EUID" -eq 0 ]; then
     print_warning "Running as root. It's recommended to run as a regular user with docker permissions."
 fi
 
+print_warning() {
+    echo -e "${YELLOW}WARNING: $1${NC}" >&2
+}
+
 # Create directory structure
 print_header "Creating Directory Structure"
 directories=(
     "data/wordpress"
     "data/mariadb"
-    "data/redis"
+    "data/valkey"
     "data/logs"
     "config/sites"
     "config/fail2ban/filter.d"
@@ -88,7 +92,7 @@ done
 # Create .gitkeep files
 touch data/wordpress/.gitkeep
 touch data/mariadb/.gitkeep
-touch data/redis/.gitkeep
+touch data/valkey/.gitkeep
 touch data/logs/.gitkeep
 touch config/sites/.gitkeep
 
@@ -114,24 +118,27 @@ fi
 # Generate secure passwords
 if grep -q "your_secure_root_password_here" .env; then
     print_info "Generating secure passwords..."
-    
+
     MYSQL_ROOT_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
     MYSQL_USER_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
+    REDIS_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
     WP_ADMIN_PASS=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
-    
+
     # Update .env file based on OS
     if [[ "$OSTYPE" == "darwin"* ]]; then
         # macOS
         sed -i '' "s/your_secure_root_password_here/$MYSQL_ROOT_PASS/g" .env
         sed -i '' "s/your_secure_password_here/$MYSQL_USER_PASS/g" .env
+        sed -i '' "s/generate_secure_redis_password_here/$REDIS_PASS/g" .env
         sed -i '' "s/generate_secure_password_here/$WP_ADMIN_PASS/g" .env
     else
         # Linux
         sed -i "s/your_secure_root_password_here/$MYSQL_ROOT_PASS/g" .env
         sed -i "s/your_secure_password_here/$MYSQL_USER_PASS/g" .env
+        sed -i "s/generate_secure_redis_password_here/$REDIS_PASS/g" .env
         sed -i "s/generate_secure_password_here/$WP_ADMIN_PASS/g" .env
     fi
-    
+
     print_success "Generated secure passwords"
 fi
 
@@ -158,7 +165,7 @@ print_success "Docker images built"
 
 # Start core services
 print_header "Starting Core Services"
-docker compose up -d mariadb redis
+docker compose up -d mariadb valkey
 print_info "Waiting for services to be ready..."
 sleep 10
 
@@ -170,10 +177,10 @@ else
     exit 1
 fi
 
-if docker exec wpfleet_redis redis-cli ping 2>/dev/null | grep -q PONG; then
-    print_success "Redis is ready"
+if docker exec wpfleet_valkey valkey-cli ping 2>/dev/null | grep -q PONG; then
+    print_success "Valkey is ready"
 else
-    print_error "Redis failed to start"
+    print_error "Valkey failed to start"
     exit 1
 fi
 

@@ -66,77 +66,134 @@ check_docker() {
 update_caddyfile() {
     local domain=$1
     local action=$2  # "add" or "remove"
-    
-    local caddyfile="$PROJECT_ROOT/docker/frankenphp/Caddyfile.template"
-    local temp_file=$(mktemp)
-    
-    if [ "$action" = "add" ]; then
-        # Add new domain to existing Caddyfile
-        print_info "Adding $domain to Caddyfile..."
-        
-        # Create site-specific block and append
-        cat >> "$temp_file" << EOF
+    local db_name=$(sanitize_domain_for_db "$domain")
 
-# Site: $domain
+    local site_config="$PROJECT_ROOT/config/caddy/sites/${domain}.caddy"
+
+    if [ "$action" = "add" ]; then
+        # Create site-specific Caddy configuration file
+        print_info "Creating Caddy configuration for $domain..."
+
+        mkdir -p "$PROJECT_ROOT/config/caddy/sites"
+
+        cat > "$site_config" << EOF
+# Site configuration for $domain
 $domain {
-    encode zstd gzip
-    
+    # Enable compression with optimal settings
+    encode {
+        zstd
+        gzip 6
+        minimum_length 1024
+    }
+
     # Security headers
     header {
+        # Remove sensitive headers
         -Server
         -X-Powered-By
+        -X-Generator
+
+        # WordPress security headers
         X-Frame-Options "SAMEORIGIN"
         X-Content-Type-Options "nosniff"
         X-XSS-Protection "1; mode=block"
-        Referrer-Policy "no-referrer-when-downgrade"
+        Referrer-Policy "strict-origin-when-cross-origin"
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+        # CSP for WordPress (allows inline scripts/styles needed by WP admin)
+        # More restrictive for frontend, permissive for admin
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https: data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self' https://www.google.com;"
+
+        # Permissions Policy
+        Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), bluetooth=()"
     }
-    
+
     # Document root for this domain
     root * /var/www/html/$domain
-    
-    # WordPress specific rules
+
+    # Redirect www to non-www
+    @www {
+        host www.$domain
+    }
+    redir @www https://$domain{uri} permanent
+
+    # WordPress security rules - block dangerous files
     @disallowed {
         path /xmlrpc.php
         path /wp-config.php
         path /.user.ini
         path /.htaccess
         path /wp-content/debug.log
+        path /wp-content/backups/*
+        path /wp-content/ai1wm-backups/*
         path */.*
+        path */.git/*
+        path */node_modules/*
+        path */vendor/*
     }
-    
-    respond @disallowed 403
-    
-    # Handle WordPress permalinks
-    php_fastcgi unix//run/php/php-fpm.sock {
-        try_files {path} {path}/ /index.php?{query}
+
+    respond @disallowed 403 {
+        body "Access Denied"
+        close
     }
-    
-    # Cache static assets
+
+    # Handle static assets with aggressive caching
     @static {
-        path *.css *.js *.ico *.gif *.jpg *.jpeg *.png *.svg *.woff *.woff2 *.ttf *.eot
+        path *.css *.js *.ico *.gif *.jpg *.jpeg *.png *.svg *.woff *.woff2 *.ttf *.eot *.webp *.avif
     }
-    
+
     header @static {
         Cache-Control "public, max-age=31536000, immutable"
+        Vary "Accept-Encoding"
     }
-    
-    file_server
+
+    # Handle media uploads with moderate caching
+    @uploads {
+        path /wp-content/uploads/*
+    }
+
+    header @uploads {
+        Cache-Control "public, max-age=86400"
+        Vary "Accept-Encoding"
+    }
+
+    # Handle WordPress with FrankenPHP - proper permalink support
+    php {
+        root /var/www/html/$domain
+        try_files {path} {path}/ /index.php?{query}
+    }
+
+    file_server {
+        precompressed gzip br
+    }
+
+    # Create site-specific log directory
+    @createlogdir {
+        path *
+    }
+
+    # Site-specific logging
+    log {
+        output file /var/log/frankenphp/$domain/access.log {
+            roll_size 100MB
+            roll_keep 5
+            roll_keep_for 168h
+        }
+        format json
+        level INFO
+    }
 }
 EOF
-        
-        # Append to main Caddyfile
-        cat "$caddyfile" "$temp_file" > "${caddyfile}.new"
-        mv "${caddyfile}.new" "$caddyfile"
-        
+
+    # Create log directory for this site
+    mkdir -p "$PROJECT_ROOT/data/logs/frankenphp/$domain"
+    chmod 755 "$PROJECT_ROOT/data/logs/frankenphp/$domain"
+
     elif [ "$action" = "remove" ]; then
-        # Remove domain block from Caddyfile
-        print_info "Removing $domain from Caddyfile..."
-        sed "/# Site: $domain/,/^}/d" "$caddyfile" > "$temp_file"
-        mv "$temp_file" "$caddyfile"
+        # Remove site-specific configuration file
+        print_info "Removing Caddy configuration for $domain..."
+        rm -f "$site_config"
     fi
-    
-    rm -f "$temp_file"
 }
 
 # Reload FrankenPHP configuration
@@ -270,11 +327,12 @@ import_existing_wordpress() {
         
         # Add Redis configuration if not present
         if ! grep -q "WP_REDIS_HOST" "$wp_config"; then
-            cat >> "$wp_config" << 'EOF'
+            cat >> "$wp_config" << EOF
 
 // Redis Object Cache
 define( 'WP_REDIS_HOST', 'redis' );
 define( 'WP_REDIS_PORT', 6379 );
+define( 'WP_REDIS_PASSWORD', '${REDIS_PASSWORD}' );
 define( 'WP_REDIS_PREFIX', '${db_name}' );
 define( 'WP_REDIS_DATABASE', 0 );
 EOF
@@ -312,6 +370,7 @@ install_clean_wordpress() {
 // Redis Object Cache
 define( 'WP_REDIS_HOST', 'redis' );
 define( 'WP_REDIS_PORT', 6379 );
+define( 'WP_REDIS_PASSWORD', '${REDIS_PASSWORD}' );
 define( 'WP_REDIS_PREFIX', '$db_name' );
 define( 'WP_REDIS_DATABASE', 0 );
 
@@ -432,11 +491,11 @@ remove_site() {
         exit 0
     fi
     
-    # Create backup
+    # Create backup with secure permissions
     local backup_name="backup_${domain}_$(date +%Y%m%d_%H%M%S).tar.gz"
     print_info "Creating backup: $backup_name"
-    tar -czf "$PROJECT_ROOT/$backup_name" -C "$PROJECT_ROOT/data/wordpress" "$domain" 2>/dev/null || true
-    chmod 600 "$PROJECT_ROOT/$backup_name" 2>/dev/null || true
+    # Set umask to create file with restricted permissions
+    (umask 077 && tar -czf "$PROJECT_ROOT/$backup_name" -C "$PROJECT_ROOT/data/wordpress" "$domain" 2>/dev/null) || true
     
     # Drop database
     print_info "Dropping database..."

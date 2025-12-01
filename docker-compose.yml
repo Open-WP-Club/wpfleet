@@ -1,5 +1,3 @@
-version: '3.8'
-
 networks:
   wpfleet:
     driver: bridge
@@ -10,7 +8,7 @@ networks:
 volumes:
   mariadb_data:
     driver: local
-  redis_data:
+  valkey_data:
     driver: local
   caddy_data:
     driver: local
@@ -35,8 +33,7 @@ services:
     networks:
       wpfleet:
         ipv4_address: 172.20.0.2
-    ports:
-      - "127.0.0.1:3306:3306"
+    # Port 3306 not exposed to host for security - use docker exec or SSH tunnel
     command: 
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -50,21 +47,23 @@ services:
       retries: 3
       start_period: 60s
 
-  redis:
-    image: redis:7-alpine
-    container_name: wpfleet_redis
+  valkey:
+    image: valkey/valkey:7-alpine
+    container_name: wpfleet_valkey
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     volumes:
-      - redis_data:/data
-      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+      - valkey_data:/data
+      - ./docker/valkey/valkey.conf:/usr/local/etc/valkey/valkey.conf.template:ro
     networks:
       wpfleet:
         ipv4_address: 172.20.0.3
     ports:
       - "127.0.0.1:6379:6379"
-    command: redis-server /usr/local/etc/redis/redis.conf
+    command: sh -c "sed 's/\$${REDIS_PASSWORD}/'$$REDIS_PASSWORD'/g' /usr/local/etc/valkey/valkey.conf.template > /tmp/valkey.conf && valkey-server /tmp/valkey.conf"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "sh", "-c", "valkey-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -80,7 +79,8 @@ services:
       DB_HOST: mariadb
       DB_USER: ${MYSQL_USER}
       DB_PASSWORD: ${MYSQL_PASSWORD}
-      REDIS_HOST: redis
+      REDIS_HOST: valkey
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       ACME_EMAIL: ${ACME_EMAIL}
       WP_ADMIN_USER: ${WP_ADMIN_USER}
       WP_ADMIN_PASSWORD: ${WP_ADMIN_PASSWORD}
@@ -97,7 +97,7 @@ services:
     depends_on:
       mariadb:
         condition: service_healthy
-      redis:
+      valkey:
         condition: service_healthy
     ports:
       - "80:80"

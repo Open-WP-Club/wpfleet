@@ -6,7 +6,7 @@
 # Data directories
 data/wordpress/*
 data/mariadb/*
-data/redis/*
+data/valkey/*
 data/logs/*
 !data/**/.gitkeep
 

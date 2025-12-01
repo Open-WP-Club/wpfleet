@@ -1,204 +1,28 @@
-DOMAIN_PLACEHOLDER {
-    # Enable compression with optimal settings
-    encode {
-        zstd
-        gzip 6
-        minimum_length 1024
-        match {
-            header Content-Type text/*
-            header Content-Type application/json*
-            header Content-Type application/javascript*
-            header Content-Type application/xml*
-            header Content-Type application/rss+xml*
-            header Content-Type application/atom+xml*
-            header Content-Type image/svg+xml*
+# WPFleet Caddy Configuration
+# Main configuration file for FrankenPHP/Caddy
+
+# Global options
+{
+    # Email for ACME/Let's Encrypt certificates
+    email {$ACME_EMAIL:admin@example.com}
+
+    # Enable automatic HTTPS
+    auto_https on
+
+    # Optimized server settings
+    servers {
+        protocol {
+            experimental_http3
         }
     }
-    
-    # Security headers
-    header {
-        # Remove sensitive headers
-        -Server
-        -X-Powered-By
-        -X-Generator
-        
-        # WordPress security headers
-        X-Frame-Options "SAMEORIGIN"
-        X-Content-Type-Options "nosniff"
-        X-XSS-Protection "1; mode=block"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        
-        # CSP for WordPress
-        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; img-src 'self' https: data:; font-src 'self' https: data:;"
-        
-        # Permissions Policy
-        Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), bluetooth=()"
-    }
-    
-    # Set root directory for this site
-    root * /var/www/html/DOMAIN_PLACEHOLDER
-    
-    # Redirect www to non-www
-    @www {
-        host www.DOMAIN_PLACEHOLDER
-    }
-    redir @www https://DOMAIN_PLACEHOLDER{uri} permanent
-    
-    # Rate limiting
-    rate_limit {
-        zone DOMAIN_PLACEHOLDER {
-            key {remote_host}
-            events 100
-            window 1m
-        }
-        
-        zone DOMAIN_PLACEHOLDER_admin {
-            key {remote_host}
-            events 20
-            window 1m
-            path /wp-admin/*
-            path /wp-login.php
-        }
-    }
-    
-    # WordPress security rules
-    @disallowed {
-        path /xmlrpc.php
-        path /wp-config.php
-        path /.user.ini
-        path /.htaccess
-        path /wp-content/debug.log
-        path /wp-content/backups/*
-        path /wp-content/ai1wm-backups/*
-        path */.*
-        path */.git/*
-        path */node_modules/*
-        path */vendor/*
-    }
-    
-    # WordPress admin protection
-    @wp_admin {
-        path /wp-admin/*
-        path /wp-login.php
-    }
-    
-    # Block disallowed paths
-    respond @disallowed 403 {
-        body "Access Denied"
-        close
-    }
-    
-    # Handle static assets with aggressive caching
-    @static {
-        path *.css *.js *.ico *.gif *.jpg *.jpeg *.png *.svg *.woff *.woff2 *.ttf *.eot *.webp *.avif
-    }
-    
-    header @static {
-        Cache-Control "public, max-age=31536000, immutable"
-        Vary "Accept-Encoding"
-    }
-    
-    # Handle media uploads with moderate caching
-    @uploads {
-        path /wp-content/uploads/*
-    }
-    
-    header @uploads {
-        Cache-Control "public, max-age=86400"
-        Vary "Accept-Encoding"
-    }
-    
-    # Enhanced PHP processing with FrankenPHP
-    @php {
-        path *.php
-    }
-    
-    handle @php {
-        php_server {
-            # Site-specific environment variables
-            env SERVER_NAME DOMAIN_PLACEHOLDER
-            env DB_NAME DB_NAME_PLACEHOLDER
-            env WP_HOME https://DOMAIN_PLACEHOLDER
-            env WP_SITEURL https://DOMAIN_PLACEHOLDER
-            env WP_CACHE_KEY_SALT DOMAIN_PLACEHOLDER
-            env REDIS_PREFIX DB_NAME_PLACEHOLDER
-            
-            # Enhanced performance settings
-            env PHP_VALUE "
-                memory_limit=MEMORY_LIMIT_PLACEHOLDER
-                max_execution_time=300
-                upload_max_filesize=128M
-                post_max_size=128M
-                max_input_vars=5000
-                opcache.enable=1
-                opcache.validate_timestamps=0
-                opcache.revalidate_freq=0
-                realpath_cache_size=4096K
-                realpath_cache_ttl=600
-                open_basedir=/var/www/html/DOMAIN_PLACEHOLDER:/tmp:/usr/share/php:/var/cache/frankenphp
-            "
-            
-            # WordPress-specific settings
-            resolve_root_symlink
-            split_path .php
-            try_files {path} {path}/ /index.php?{query}
-            
-            # Index files
-            index index.php index.html
-            
-            # Enhanced timeout settings
-            read_timeout 300s
-            write_timeout 300s
-        }
-    }
-    
-    # Handle everything else as static files
-    file_server {
-        precompressed gzip br
-        pass_thru
-    }
-    
-    # Enhanced error handling
-    handle_errors {
-        @404 {
-            expression {http.error.status_code} == 404
-        }
-        
-        @500 {
-            expression {http.error.status_code} >= 500
-        }
-        
-        handle @404 {
-            rewrite * /index.php
-            php_server {
-                resolve_root_symlink
-                try_files {path} {path}/ /index.php?{query}
-            }
-        }
-        
-        handle @500 {
-            respond "Server Error - Please try again later" 500
-        }
-        
-        respond "{http.error.status_code} {http.error.status_text}"
-    }
-    
-    # Request size limits
-    request_body {
-        max_size 128MB
-    }
-    
-    # Site-specific logging
-    log {
-        output file /var/log/frankenphp/DOMAIN_PLACEHOLDER/access.log {
-            roll_size 100MB
-            roll_keep 5
-            roll_keep_for 168h
-        }
-        format json {
-            time_format "2006-01-02T15:04:05.000Z07:00"
-        }
-        level INFO
+}
+
+# Import all site configurations from sites directory
+import /etc/caddy/sites/*.caddy
+
+# Health check endpoint for Docker healthcheck
+:8080 {
+    respond /health 200 {
+        body "OK"
     }
 }

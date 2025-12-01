@@ -34,20 +34,20 @@ services:
   #   networks:
   #     - wpfleet
 
-  # Redis Commander for development
-  # Uncomment to add Redis web interface
+  # Redis Commander for development (works with Valkey)
+  # Uncomment to add Redis-compatible web interface
   # redis-commander:
   #   image: rediscommander/redis-commander:latest
   #   container_name: wpfleet_redis_commander
   #   restart: unless-stopped
   #   environment:
-  #     REDIS_HOSTS: local:redis:6379
+  #     REDIS_HOSTS: local:valkey:6379
   #   ports:
   #     - "127.0.0.1:8081:8081"
   #   networks:
   #     - wpfleet
   #   depends_on:
-  #     - redis
+  #     - valkey
 
   # Portainer for Docker management
   # Uncomment to add Portainer
@@ -69,8 +69,8 @@ services:
   #   ports:
   #     - "127.0.0.1:3306:3306"  # Expose to host for development
 
-  # Override Redis for development
-  # redis:
+  # Override Valkey for development
+  # valkey:
   #   ports:
   #     - "127.0.0.1:6379:6379"  # Expose to host for development
 

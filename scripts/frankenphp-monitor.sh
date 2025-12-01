@@ -224,11 +224,11 @@ perform_health_checks() {
         print_warning "Database connectivity: FAILED or not running"
     fi
     
-    # Redis connectivity
-    if check_container "wpfleet_redis" && docker exec wpfleet_redis redis-cli ping 2>/dev/null | grep -q PONG; then
-        print_ok "Redis connectivity: OK"
+    # Valkey connectivity
+    if check_container "wpfleet_valkey" && docker exec wpfleet_valkey valkey-cli ping 2>/dev/null | grep -q PONG; then
+        print_ok "Valkey connectivity: OK"
     else
-        print_warning "Redis connectivity: FAILED or not running"
+        print_warning "Valkey connectivity: FAILED or not running"
     fi
     
     # Check port bindings
@@ -341,7 +341,7 @@ get_recommendations() {
     print_info "General Recommendations:"
     echo "  • Monitor memory usage and set appropriate limits"
     echo "  • Enable OPcache with validation_timestamps=0 in production"
-    echo "  • Use Redis object caching for WordPress"
+    echo "  • Use Valkey object caching for WordPress (Redis-compatible)"
     echo "  • Monitor error logs regularly"
     echo "  • Consider enabling FrankenPHP worker mode if supported"
     echo "  • Use HTTP/2 and compression for better performance"

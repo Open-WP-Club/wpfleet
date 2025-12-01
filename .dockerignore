@@ -1,0 +1,43 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Data and runtime files
+data/
+backups/
+*.log
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Documentation
+README.md
+LICENSE
+*.md
+docs/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Node modules (if any)
+node_modules/
+npm-debug.log
+
+# Build artifacts
+*.tar.gz
+*.zip
+dist/
+build/

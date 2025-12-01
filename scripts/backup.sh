@@ -10,7 +10,9 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Load environment variables
 if [ -f "$PROJECT_ROOT/.env" ]; then
-    export $(cat "$PROJECT_ROOT/.env" | grep -v '^#' | xargs)
+    set -a
+    source "$PROJECT_ROOT/.env"
+    set +a
 fi
 
 # Configuration
@@ -132,10 +134,11 @@ backup_site() {
         return 1
     fi
     
-    # Create site backup directory
+    # Create site backup directory with secure permissions
     local site_backup_dir="$BACKUP_ROOT/$TIMESTAMP/$domain"
     mkdir -p "$site_backup_dir"
-    
+    chmod 700 "$site_backup_dir"
+
     # Backup database
     print_info "  - Backing up database..."
     if docker exec wpfleet_mariadb mysqldump -uroot -p${MYSQL_ROOT_PASSWORD} \
