@@ -101,7 +101,8 @@ $domain {
         Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
 
         # CSP for WordPress (allows inline scripts/styles needed by WP admin)
-        Content-Security-Policy "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'; img-src 'self' https: data:; font-src 'self' https: data:;"
+        # More restrictive for frontend, permissive for admin
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' https: data:; font-src 'self' https: data: https://fonts.gstatic.com; connect-src 'self'; frame-src 'self' https://www.google.com;"
 
         # Permissions Policy
         Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), bluetooth=()"
@@ -156,13 +157,19 @@ $domain {
         Vary "Accept-Encoding"
     }
 
-    # Handle WordPress with FrankenPHP
+    # Handle WordPress with FrankenPHP - proper permalink support
     php {
         root /var/www/html/$domain
+        try_files {path} {path}/ /index.php?{query}
     }
 
     file_server {
         precompressed gzip br
+    }
+
+    # Create site-specific log directory
+    @createlogdir {
+        path *
     }
 
     # Site-specific logging
@@ -177,6 +184,10 @@ $domain {
     }
 }
 EOF
+
+    # Create log directory for this site
+    mkdir -p "$PROJECT_ROOT/data/logs/frankenphp/$domain"
+    chmod 755 "$PROJECT_ROOT/data/logs/frankenphp/$domain"
 
     elif [ "$action" = "remove" ]; then
         # Remove site-specific configuration file

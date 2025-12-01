@@ -35,9 +35,9 @@ get_mariadb_stats() {
     " 2>/dev/null || echo "N/A"
 }
 
-# Function to get Redis stats
-get_redis_stats() {
-    docker exec wpfleet_redis redis-cli -a "${REDIS_PASSWORD}" --no-auth-warning info stats 2>/dev/null | grep -E "^(total_commands_processed|instantaneous_ops_per_sec|keyspace_hits|keyspace_misses):" | tr '\n' '|' || echo "N/A"
+# Function to get Valkey stats
+get_valkey_stats() {
+    docker exec wpfleet_valkey valkey-cli -a "${REDIS_PASSWORD}" --no-auth-warning info stats 2>/dev/null | grep -E "^(total_commands_processed|instantaneous_ops_per_sec|keyspace_hits|keyspace_misses):" | tr '\n' '|' || echo "N/A"
 }
 
 # Function to get OPcache stats
@@ -85,7 +85,7 @@ display_dashboard() {
 
     # Container Status
     print_header "Container Status"
-    for container in wpfleet_mariadb wpfleet_redis wpfleet_frankenphp; do
+    for container in wpfleet_mariadb wpfleet_valkey wpfleet_frankenphp; do
         if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
             stats=$(get_container_stats "$container")
             IFS='|' read -r cpu mem mem_pct net block <<< "$stats"
@@ -112,13 +112,13 @@ display_dashboard() {
 
     echo ""
 
-    # Redis Stats
-    print_header "Redis Statistics"
-    redis_stats=$(get_redis_stats)
-    if [ "$redis_stats" != "N/A" ]; then
-        echo "  $redis_stats" | tr '|' '\n' | sed 's/^/  /'
+    # Valkey Stats
+    print_header "Valkey Statistics"
+    valkey_stats=$(get_valkey_stats)
+    if [ "$valkey_stats" != "N/A" ]; then
+        echo "  $valkey_stats" | tr '|' '\n' | sed 's/^/  /'
     else
-        echo "  Unable to fetch Redis stats"
+        echo "  Unable to fetch Valkey stats"
     fi
 
     echo ""
@@ -153,7 +153,7 @@ display_dashboard() {
     # Recent Errors
     print_header "Recent Errors (last hour)"
     error_count=0
-    for container in wpfleet_mariadb wpfleet_redis wpfleet_frankenphp; do
+    for container in wpfleet_mariadb wpfleet_valkey wpfleet_frankenphp; do
         if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
             errors=$(docker logs --since 1h "$container" 2>&1 | grep -iE "(error|fatal|critical)" | wc -l)
             if [ "$errors" -gt 0 ]; then

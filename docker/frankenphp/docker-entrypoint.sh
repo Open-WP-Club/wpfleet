@@ -102,6 +102,9 @@ create_worker_script() {
 /**
  * FrankenPHP Worker Script for WordPress
  * Enhanced memory management and graceful restarts
+ *
+ * Note: FrankenPHP worker mode is handled by FrankenPHP itself.
+ * This script just provides cleanup and monitoring hooks.
  */
 
 // Prevent worker script termination when client connection is interrupted
@@ -126,9 +129,8 @@ function format_bytes($bytes, $precision = 2) {
     return round($bytes, $precision) . ' ' . $units[$i];
 }
 
-// Main worker loop - note: actual request handling is done by FrankenPHP
-// This script just manages worker lifecycle
-frankenphp_handle_request(function() use (&$requestCount, $maxRequests, $memoryThreshold, $startTime, $maxUptime) {
+// Check if we should restart
+function should_restart(&$requestCount, $maxRequests, $memoryThreshold, $startTime, $maxUptime) {
     $requestCount++;
     $currentTime = time();
     $uptime = $currentTime - $startTime;
@@ -137,17 +139,17 @@ frankenphp_handle_request(function() use (&$requestCount, $maxRequests, $memoryT
     // Check restart conditions
     if ($requestCount >= $maxRequests) {
         error_log("Worker restart: max requests reached ({$requestCount}/{$maxRequests})");
-        return frankenphp_worker_restart();
+        return true;
     }
 
     if ($currentMemory >= $memoryThreshold) {
         error_log("Worker restart: memory threshold exceeded (" . format_bytes($currentMemory) . ")");
-        return frankenphp_worker_restart();
+        return true;
     }
 
     if ($uptime >= $maxUptime) {
         error_log("Worker restart: max uptime exceeded ({$uptime}s)");
-        return frankenphp_worker_restart();
+        return true;
     }
 
     // Log status periodically
@@ -160,6 +162,19 @@ frankenphp_handle_request(function() use (&$requestCount, $maxRequests, $memoryT
         ));
     }
 
+    return false;
+}
+
+// Main worker loop - FrankenPHP handles request processing
+while (true) {
+    // FrankenPHP automatically processes the request here
+
+    // Check if we should restart
+    if (should_restart($requestCount, $maxRequests, $memoryThreshold, $startTime, $maxUptime)) {
+        error_log("Worker shutting down for restart");
+        break; // Exit to trigger worker restart
+    }
+
     // Clean up after each request
     if (function_exists('wp_cache_flush')) {
         wp_cache_flush();
@@ -169,7 +184,7 @@ frankenphp_handle_request(function() use (&$requestCount, $maxRequests, $memoryT
     if ($requestCount % 50 === 0) {
         gc_collect_cycles();
     }
-});
+}
 
 error_log("Worker shutting down gracefully");
 EOF

@@ -74,7 +74,7 @@ echo ""
 # Check core services
 print_header "Core Services"
 check_service "MariaDB" "wpfleet_mariadb"
-check_service "Redis" "wpfleet_redis"
+check_service "Valkey" "wpfleet_valkey"
 check_service "FrankenPHP" "wpfleet_frankenphp"
 
 # Check MariaDB connectivity
@@ -89,16 +89,16 @@ else
     print_error "MariaDB is not accepting connections"
 fi
 
-# Check Redis connectivity
+# Check Valkey connectivity
 print_header "Cache Connectivity"
-if docker exec wpfleet_redis redis-cli ping 2>/dev/null | grep -q PONG; then
-    print_ok "Redis is responding to ping"
-    
+if docker exec wpfleet_valkey valkey-cli ping 2>/dev/null | grep -q PONG; then
+    print_ok "Valkey is responding to ping"
+
     # Get memory usage
-    redis_memory=$(docker exec wpfleet_redis redis-cli info memory 2>/dev/null | grep used_memory_human | cut -d: -f2 | tr -d '\r')
-    print_ok "Redis memory usage: $redis_memory"
+    valkey_memory=$(docker exec wpfleet_valkey valkey-cli info memory 2>/dev/null | grep used_memory_human | cut -d: -f2 | tr -d '\r')
+    print_ok "Valkey memory usage: $valkey_memory"
 else
-    print_error "Redis is not responding"
+    print_error "Valkey is not responding"
 fi
 
 # Check FrankenPHP/Caddy
@@ -159,7 +159,7 @@ docker stats --no-stream --format "table {{.Container}}\t{{.CPUPerc}}\t{{.MemUsa
 
 # Check for errors in logs
 print_header "Recent Errors (last 24h)"
-for container in wpfleet_mariadb wpfleet_redis wpfleet_frankenphp; do
+for container in wpfleet_mariadb wpfleet_valkey wpfleet_frankenphp; do
     if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
         error_count=$(docker logs --since 24h "$container" 2>&1 | grep -iE "(error|fatal|critical)" | wc -l)
         if [ "$error_count" -gt 0 ]; then
@@ -174,7 +174,7 @@ done
 echo ""
 print_header "Summary"
 if check_service "MariaDB" "wpfleet_mariadb" >/dev/null 2>&1 && \
-   check_service "Redis" "wpfleet_redis" >/dev/null 2>&1 && \
+   check_service "Valkey" "wpfleet_valkey" >/dev/null 2>&1 && \
    check_service "FrankenPHP" "wpfleet_frankenphp" >/dev/null 2>&1; then
     print_ok "All core services are healthy"
     echo ""

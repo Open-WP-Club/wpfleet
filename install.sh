@@ -64,15 +64,19 @@ print_success "Docker Compose found"
 
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then
-    print_info "Running as root. It's recommended to run as a regular user with docker permissions."
+    print_warning "Running as root. It's recommended to run as a regular user with docker permissions."
 fi
+
+print_warning() {
+    echo -e "${YELLOW}WARNING: $1${NC}" >&2
+}
 
 # Create directory structure
 print_header "Creating Directory Structure"
 directories=(
     "data/wordpress"
     "data/mariadb"
-    "data/redis"
+    "data/valkey"
     "data/logs"
     "config/sites"
     "config/fail2ban/filter.d"
@@ -88,7 +92,7 @@ done
 # Create .gitkeep files
 touch data/wordpress/.gitkeep
 touch data/mariadb/.gitkeep
-touch data/redis/.gitkeep
+touch data/valkey/.gitkeep
 touch data/logs/.gitkeep
 touch config/sites/.gitkeep
 
@@ -161,7 +165,7 @@ print_success "Docker images built"
 
 # Start core services
 print_header "Starting Core Services"
-docker compose up -d mariadb redis
+docker compose up -d mariadb valkey
 print_info "Waiting for services to be ready..."
 sleep 10
 
@@ -173,10 +177,10 @@ else
     exit 1
 fi
 
-if docker exec wpfleet_redis redis-cli ping 2>/dev/null | grep -q PONG; then
-    print_success "Redis is ready"
+if docker exec wpfleet_valkey valkey-cli ping 2>/dev/null | grep -q PONG; then
+    print_success "Valkey is ready"
 else
-    print_error "Redis failed to start"
+    print_error "Valkey failed to start"
     exit 1
 fi
 

@@ -1,13 +1,13 @@
 # WPFleet - Docker-based WordPress Multi-Site Hosting
 
-WPFleet is a production-ready, scalable solution for hosting multiple WordPress sites on a single server using Docker, FrankenPHP, MariaDB, and Redis.
+WPFleet is a production-ready, scalable solution for hosting multiple WordPress sites on a single server using Docker, FrankenPHP, MariaDB, and Valkey (Redis-compatible cache).
 
 ## Features
 
 - **FrankenPHP** - Modern PHP application server with built-in Caddy
 - **Automatic SSL** - Let's Encrypt certificates via Caddy
 - **Shared MariaDB** - Single database server with isolated databases
-- **Redis Caching** - Object cache for improved performance
+- **Valkey Caching** - Redis-compatible object cache for improved performance
 - **WP-CLI** - Built-in WordPress command-line interface
 - **Security First** - Isolated containers, security headers, and best practices
 - **Resource Management** - CPU and memory limits per site
@@ -51,7 +51,7 @@ chmod +x scripts/*.sh
 ### 4. Start Core Services
 
 ```bash
-docker-compose up -d mariadb redis
+docker-compose up -d mariadb valkey
 ```
 
 ### 5. Add Your First Site
@@ -92,7 +92,7 @@ WPFleet supports three different ways to add WordPress sites:
 
 - Downloads latest WordPress core
 - Creates fresh database
-- Installs and configures Redis Object Cache
+- Installs and configures Redis Object Cache (connects to Valkey)
 - Sets up optimized `wp-config.php`
 - Creates admin user with generated password
 - Applies security and performance settings
@@ -142,7 +142,7 @@ Site Information:
 - Prompts for files archive (`.tar.gz` or `.zip`)
 - Imports database and extracts files
 - Updates `wp-config.php` with new database settings
-- Adds Redis configuration
+- Adds Valkey (Redis-compatible) cache configuration
 
 **Migration Process:**
 
@@ -223,7 +223,7 @@ Monitor all services in real-time:
 The dashboard shows:
 - Container CPU/Memory usage
 - MariaDB statistics (queries, connections, slow queries)
-- Redis statistics (commands, hit rate)
+- Valkey statistics (commands, hit rate)
 - OPcache statistics (hit rate, memory usage)
 - Active WordPress sites
 - Recent errors
@@ -273,7 +273,7 @@ This creates a fresh WordPress installation with:
 
 - Latest WordPress core
 - Clean database
-- Redis Object Cache plugin
+- Redis Object Cache plugin (connects to Valkey)
 - Optimized configuration
 - Admin user with generated password
 
@@ -295,7 +295,7 @@ This creates only the infrastructure:
 
 - Increase memory/CPU limits in `.env`
 - Tune MariaDB buffer pool size
-- Increase Redis memory limit
+- Increase Valkey memory limit (REDIS_MAXMEMORY in .env)
 
 ### Horizontal Scaling
 
@@ -377,14 +377,14 @@ Check MariaDB status:
 docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "SHOW STATUS"
 ```
 
-### Redis Connection Issues
+### Cache Connection Issues
 
-**WordPress Not Using Redis Cache**
+**WordPress Not Using Cache**
 
-Verify Redis is working:
+Verify Valkey is working:
 
 ```bash
-docker exec wpfleet_redis redis-cli -a ${REDIS_PASSWORD} ping
+docker exec wpfleet_valkey valkey-cli -a ${REDIS_PASSWORD} ping
 ```
 
 Check if Redis Object Cache plugin is active:
@@ -392,6 +392,8 @@ Check if Redis Object Cache plugin is active:
 ```bash
 ./scripts/wp-cli.sh yourdomain.com plugin list | grep redis-cache
 ```
+
+Note: The Redis Object Cache plugin is compatible with Valkey.
 
 ### Site Not Loading
 
@@ -430,9 +432,9 @@ Run comprehensive health check:
 ```
 
 This checks:
-- Core services (MariaDB, Redis, FrankenPHP)
+- Core services (MariaDB, Valkey, FrankenPHP)
 - Database connectivity
-- Redis connectivity
+- Valkey connectivity
 - Site configurations
 - Disk usage
 - Recent errors in logs
