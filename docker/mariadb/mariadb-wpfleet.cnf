@@ -60,11 +60,10 @@ read_rnd_buffer_size = 4M
 join_buffer_size = 4M
 bulk_insert_buffer_size = 32M
 
-# Query Cache (beneficial for WordPress read-heavy workloads)
-query_cache_type = 1
-query_cache_size = 256M
-query_cache_limit = 16M
-query_cache_min_res_unit = 2K
+# Query Cache (DISABLED - deprecated in MariaDB 10.10+ and MySQL 8.0+)
+# Query cache can hurt performance in write-heavy workloads
+# query_cache_type = 0
+# query_cache_size = 0
 
 # Temporary Tables (important for complex WordPress queries)
 tmp_table_size = 256M

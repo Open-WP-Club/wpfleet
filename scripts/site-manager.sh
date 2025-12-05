@@ -14,9 +14,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Load environment variables
+# Load environment variables safely
 if [ -f "$PROJECT_ROOT/.env" ]; then
-    export $(cat "$PROJECT_ROOT/.env" | grep -v '^#' | xargs)
+    set -a
+    source "$PROJECT_ROOT/.env"
+    set +a
 fi
 
 # Functions
@@ -280,15 +282,59 @@ import_existing_wordpress() {
     
     # Prompt for database file
     read -p "Path to database backup file (*.sql or *.sql.gz): " db_file
+
+    # Validate database file path
+    if [ -z "$db_file" ]; then
+        print_error "Database file path cannot be empty"
+        exit 1
+    fi
+
+    # Convert to absolute path and validate
+    db_file=$(realpath "$db_file" 2>/dev/null || echo "$db_file")
+
     if [ ! -f "$db_file" ]; then
         print_error "Database file not found: $db_file"
         exit 1
     fi
-    
+
+    # Validate file extension
+    if [[ ! "$db_file" =~ \.(sql|sql\.gz)$ ]]; then
+        print_error "Invalid database file extension. Must be .sql or .sql.gz"
+        exit 1
+    fi
+
+    # Check file is readable
+    if [ ! -r "$db_file" ]; then
+        print_error "Database file is not readable: $db_file"
+        exit 1
+    fi
+
     # Prompt for files archive
     read -p "Path to files archive (*.tar.gz or *.zip): " files_archive
+
+    # Validate files archive path
+    if [ -z "$files_archive" ]; then
+        print_error "Files archive path cannot be empty"
+        exit 1
+    fi
+
+    # Convert to absolute path and validate
+    files_archive=$(realpath "$files_archive" 2>/dev/null || echo "$files_archive")
+
     if [ ! -f "$files_archive" ]; then
         print_error "Files archive not found: $files_archive"
+        exit 1
+    fi
+
+    # Validate file extension
+    if [[ ! "$files_archive" =~ \.(tar\.gz|zip)$ ]]; then
+        print_error "Invalid archive format. Must be .tar.gz or .zip"
+        exit 1
+    fi
+
+    # Check file is readable
+    if [ ! -r "$files_archive" ]; then
+        print_error "Files archive is not readable: $files_archive"
         exit 1
     fi
     
@@ -329,8 +375,8 @@ import_existing_wordpress() {
         if ! grep -q "WP_REDIS_HOST" "$wp_config"; then
             cat >> "$wp_config" << EOF
 
-// Redis Object Cache
-define( 'WP_REDIS_HOST', 'redis' );
+// Redis Object Cache (Valkey)
+define( 'WP_REDIS_HOST', 'valkey' );
 define( 'WP_REDIS_PORT', 6379 );
 define( 'WP_REDIS_PASSWORD', '${REDIS_PASSWORD}' );
 define( 'WP_REDIS_PREFIX', '${db_name}' );
@@ -367,8 +413,8 @@ install_clean_wordpress() {
             --dbcharset='utf8mb4' \\
             --dbcollate='utf8mb4_unicode_ci' \\
             --extra-php <<'PHP'
-// Redis Object Cache
-define( 'WP_REDIS_HOST', 'redis' );
+// Redis Object Cache (Valkey)
+define( 'WP_REDIS_HOST', 'valkey' );
 define( 'WP_REDIS_PORT', 6379 );
 define( 'WP_REDIS_PASSWORD', '${REDIS_PASSWORD}' );
 define( 'WP_REDIS_PREFIX', '$db_name' );

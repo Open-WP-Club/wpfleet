@@ -67,6 +67,8 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+    mem_limit: ${VALKEY_MEM_LIMIT:-512m}
+    cpus: ${VALKEY_CPU_LIMIT:-1}
 
   frankenphp:
     build:
