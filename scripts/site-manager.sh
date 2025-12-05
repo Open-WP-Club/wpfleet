@@ -510,25 +510,152 @@ add_site() {
     esac
 }
 
+clone_site() {
+    local source_domain=$1
+    local target_domain=$2
+
+    # Validate domains
+    if ! validate_domain "$source_domain"; then
+        print_error "Invalid source domain: $source_domain"
+        exit 1
+    fi
+
+    if ! validate_domain "$target_domain"; then
+        print_error "Invalid target domain: $target_domain"
+        exit 1
+    fi
+
+    local source_dir="$PROJECT_ROOT/data/wordpress/$source_domain"
+    local target_dir="$PROJECT_ROOT/data/wordpress/$target_domain"
+    local source_db="wp_$(sanitize_domain_for_db $source_domain)"
+    local target_db="wp_$(sanitize_domain_for_db $target_domain)"
+
+    print_info "Cloning site: $source_domain → $target_domain"
+
+    # Check if source exists
+    if [ ! -d "$source_dir" ]; then
+        print_error "Source site does not exist: $source_domain"
+        exit 1
+    fi
+
+    # Check if target already exists
+    if [ -d "$target_dir" ]; then
+        print_error "Target site already exists: $target_domain"
+        exit 1
+    fi
+
+    # Check if target database already exists
+    if docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "USE \`$target_db\`" 2>/dev/null; then
+        print_error "Target database already exists: $target_db"
+        exit 1
+    fi
+
+    # 1. Copy WordPress files
+    print_info "Copying WordPress files..."
+    cp -a "$source_dir" "$target_dir"
+    print_success "Files copied successfully"
+
+    # 2. Create target database
+    print_info "Creating target database..."
+    docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
+        CREATE DATABASE IF NOT EXISTS \`$target_db\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        GRANT ALL PRIVILEGES ON \`$target_db\`.* TO '$MYSQL_USER'@'%';
+        FLUSH PRIVILEGES;
+    " || {
+        print_error "Failed to create target database"
+        rm -rf "$target_dir"
+        exit 1
+    }
+    print_success "Target database created"
+
+    # 3. Export source database and import to target
+    print_info "Cloning database..."
+    docker exec wpfleet_mariadb mysqldump -uroot -p${MYSQL_ROOT_PASSWORD} \
+        --single-transaction --quick --lock-tables=false \
+        "$source_db" 2>/dev/null | \
+    docker exec -i wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} \
+        "$target_db" 2>/dev/null || {
+        print_error "Failed to clone database"
+        docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "DROP DATABASE IF EXISTS \`$target_db\`" 2>/dev/null
+        rm -rf "$target_dir"
+        exit 1
+    }
+    print_success "Database cloned successfully"
+
+    # 4. Update wp-config.php with new database name
+    print_info "Updating wp-config.php..."
+    if [ -f "$target_dir/wp-config.php" ]; then
+        sed -i "s/define( *'DB_NAME'.*/define( 'DB_NAME', '$target_db' );/" "$target_dir/wp-config.php"
+        print_success "wp-config.php updated"
+    fi
+
+    # 5. Search and replace URLs in database using WP-CLI
+    print_info "Updating URLs in database..."
+    if docker exec -u www-data wpfleet_frankenphp wp core is-installed --path="/var/www/html/$target_domain" 2>/dev/null; then
+        docker exec -u www-data wpfleet_frankenphp wp search-replace \
+            "https://$source_domain" "https://$target_domain" \
+            --path="/var/www/html/$target_domain" \
+            --all-tables \
+            --precise 2>/dev/null || true
+
+        docker exec -u www-data wpfleet_frankenphp wp search-replace \
+            "http://$source_domain" "http://$target_domain" \
+            --path="/var/www/html/$target_domain" \
+            --all-tables \
+            --precise 2>/dev/null || true
+
+        docker exec -u www-data wpfleet_frankenphp wp search-replace \
+            "//$source_domain" "//$target_domain" \
+            --path="/var/www/html/$target_domain" \
+            --all-tables \
+            --precise 2>/dev/null || true
+
+        print_success "URLs updated in database"
+    else
+        print_info "Skipping URL replacement (WordPress not installed or WP-CLI unavailable)"
+    fi
+
+    # 6. Create Caddy configuration for target site
+    update_caddyfile "$target_domain" "add"
+
+    # 7. Reload FrankenPHP
+    reload_frankenphp
+
+    # 8. Flush cache for the new site
+    print_info "Flushing cache..."
+    docker exec -u www-data wpfleet_frankenphp wp cache flush \
+        --path="/var/www/html/$target_domain" 2>/dev/null || true
+
+    print_success "Site cloned successfully!"
+    echo ""
+    print_info "Source: https://$source_domain"
+    print_info "Target: https://$target_domain"
+    echo ""
+    print_info "Next steps:"
+    echo "  1. Update DNS records to point $target_domain to this server"
+    echo "  2. Wait for SSL certificate to be issued automatically"
+    echo "  3. Test the site: https://$target_domain"
+}
+
 remove_site() {
     local domain=$1
-    
+
     # Validate domain
     if ! validate_domain "$domain"; then
         exit 1
     fi
-    
+
     local db_name="wp_$(sanitize_domain_for_db $domain)"
     local site_dir="$PROJECT_ROOT/data/wordpress/$domain"
-    
+
     print_info "Removing site: $domain"
-    
+
     # Check if site exists
     if [ ! -d "$site_dir" ]; then
         print_error "Site does not exist: $domain"
         exit 1
     fi
-    
+
     # Confirm removal
     read -p "Are you sure you want to remove $domain? This will delete all data! (y/N) " -n 1 -r
     echo
@@ -536,29 +663,29 @@ remove_site() {
         print_info "Removal cancelled"
         exit 0
     fi
-    
+
     # Create backup with secure permissions
     local backup_name="backup_${domain}_$(date +%Y%m%d_%H%M%S).tar.gz"
     print_info "Creating backup: $backup_name"
     # Set umask to create file with restricted permissions
     (umask 077 && tar -czf "$PROJECT_ROOT/$backup_name" -C "$PROJECT_ROOT/data/wordpress" "$domain" 2>/dev/null) || true
-    
+
     # Drop database
     print_info "Dropping database..."
     docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
         DROP DATABASE IF EXISTS \`$db_name\`;
     " || print_error "Failed to drop database"
-    
+
     # Update Caddyfile
     update_caddyfile "$domain" "remove"
-    
+
     # Reload FrankenPHP
     reload_frankenphp
-    
+
     # Remove directories
     rm -rf "$site_dir"
     rm -rf "$PROJECT_ROOT/data/logs/$domain"
-    
+
     print_success "Site $domain has been removed!"
     print_info "Backup saved as: $backup_name"
 }
@@ -620,6 +747,13 @@ case "$1" in
         
         add_site "$domain" "$mode"
         ;;
+    clone)
+        if [ -z "$2" ] || [ -z "$3" ]; then
+            print_error "Usage: $0 clone <source-domain> <target-domain>"
+            exit 1
+        fi
+        clone_site "$2" "$3"
+        ;;
     remove)
         if [ -z "$2" ]; then
             print_error "Usage: $0 remove <domain>"
@@ -636,12 +770,13 @@ case "$1" in
     *)
         echo "WPFleet Site Manager"
         echo ""
-        echo "Usage: $0 {add|remove|list|restart} [options]"
+        echo "Usage: $0 {add|clone|remove|list|restart} [options]"
         echo ""
         echo "Commands:"
         echo "  add <domain>                    - Add new WordPress site (clean install)"
         echo "  add <domain> --skip-install     - Create infrastructure only (no WordPress)"
         echo "  add <domain> --import-from      - Import existing WordPress site"
+        echo "  clone <source> <target>         - Clone an existing site to a new domain"
         echo "  remove <domain>                 - Remove a WordPress site"
         echo "  list                           - List all sites"
         echo "  restart                        - Restart FrankenPHP container"
@@ -650,6 +785,7 @@ case "$1" in
         echo "  $0 add example.com                    # Clean WordPress install"
         echo "  $0 add example.com --skip-install     # Just create DB & folders"
         echo "  $0 add example.com --import-from      # Import existing site"
+        echo "  $0 clone example.com staging.example.com  # Clone site"
         echo "  $0 remove example.com"
         echo "  $0 list"
         echo "  $0 restart"
