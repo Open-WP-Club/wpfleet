@@ -108,3 +108,31 @@ services:
       - "wpfleet.frankenphp=true"
     mem_limit: ${FRANKENPHP_MEM_LIMIT:-2g}
     cpus: ${FRANKENPHP_CPU_LIMIT:-2}
+
+  cron:
+    build:
+      context: ./docker/cron
+    container_name: wpfleet_cron
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-UTC}
+      BACKUP_ENABLED: ${BACKUP_ENABLED:-true}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
+      HEALTH_CHECK_ENABLED: ${HEALTH_CHECK_ENABLED:-true}
+      HEALTH_CHECK_SCHEDULE: ${HEALTH_CHECK_SCHEDULE:-0 * * * *}
+      BACKUP_CLEANUP_ENABLED: ${BACKUP_CLEANUP_ENABLED:-true}
+      BACKUP_CLEANUP_SCHEDULE: ${BACKUP_CLEANUP_SCHEDULE:-0 3 * * 0}
+      CUSTOM_CRON_JOBS: ${CUSTOM_CRON_JOBS:-}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ./:/wpfleet:ro
+      - ./data/backups:/wpfleet/backups
+      - ./data/logs/cron:/var/log/cron
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      wpfleet:
+    depends_on:
+      - mariadb
+      - frankenphp
+    mem_limit: ${CRON_MEM_LIMIT:-256m}
+    cpus: ${CRON_CPU_LIMIT:-0.5}

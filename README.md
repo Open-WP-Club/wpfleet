@@ -13,6 +13,11 @@ WPFleet is a production-ready, scalable solution for hosting multiple WordPress 
 - **Resource Management** - CPU and memory limits per site
 - **Easy Management** - Simple scripts for common tasks
 - **Migration Support** - Import WordPress sites from archives and database dumps
+- **🆕 Automated Backups** - Scheduled backups with configurable retention
+- **🆕 Discord & Slack Notifications** - Real-time alerts for backups, health issues, and deployments
+- **🆕 Site Cloning** - One-command site duplication for staging or testing
+- **🆕 Git-Based Deployments** - Deploy themes and plugins directly from Git repositories
+- **🆕 Disk Quota Management** - Per-site disk quotas with monitoring and alerts
 
 ## Requirements
 
@@ -258,6 +263,197 @@ Check SSL certificate expiration:
 ```
 
 Warns about certificates expiring within 30 days.
+
+## New Features
+
+### Automated Backup Scheduling
+
+WPFleet now includes a dedicated cron container for automated scheduled tasks.
+
+**Configuration** (in `.env`):
+
+```env
+# Enable/disable automated backups
+BACKUP_ENABLED=true
+BACKUP_SCHEDULE="0 2 * * *"  # 2 AM daily
+
+# Enable/disable health checks
+HEALTH_CHECK_ENABLED=true
+HEALTH_CHECK_SCHEDULE="0 * * * *"  # Every hour
+
+# Enable/disable backup cleanup
+BACKUP_CLEANUP_ENABLED=true
+BACKUP_CLEANUP_SCHEDULE="0 3 * * 0"  # 3 AM every Sunday
+```
+
+**Start the cron scheduler:**
+
+```bash
+docker-compose up -d cron
+```
+
+**View cron logs:**
+
+```bash
+docker logs wpfleet_cron
+tail -f data/logs/cron/backup.log
+tail -f data/logs/cron/health-check.log
+```
+
+### Discord & Slack Notifications
+
+Get real-time notifications for important events via Discord or Slack webhooks.
+
+**Setup:**
+
+1. **Discord**: Create a webhook in your Discord server settings
+2. **Slack**: Create an incoming webhook in your Slack workspace
+
+**Configuration** (in `.env`):
+
+```env
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR_WEBHOOK_URL
+```
+
+**Test notifications:**
+
+```bash
+./scripts/notify.sh test
+```
+
+**Events that trigger notifications:**
+- Backup completion/failure
+- Service health issues
+- Disk space warnings (>80%, >90%)
+- SSL certificate expiration warnings
+- Git deployment success/failure
+- Site quota exceeded
+
+**Manual notifications:**
+
+```bash
+./scripts/notify.sh success "Title" "Message"
+./scripts/notify.sh warning "Title" "Message"
+./scripts/notify.sh error "Title" "Message"
+```
+
+### Site Cloning
+
+Clone existing sites for staging, testing, or rapid deployment.
+
+**Clone a site:**
+
+```bash
+./scripts/site-manager.sh clone source.com target.com
+```
+
+**What it does:**
+- Copies all WordPress files
+- Clones database with new name
+- Updates URLs in database automatically
+- Creates new Caddy configuration
+- Flushes cache
+
+**Use cases:**
+- Create staging environments: `clone example.com staging.example.com`
+- Duplicate sites for testing: `clone example.com test.example.com`
+- Rapid deployment of similar sites
+
+### Git-Based Deployments
+
+Deploy themes and plugins directly from Git repositories.
+
+**Deploy a theme:**
+
+```bash
+./scripts/git-deploy.sh theme example.com https://github.com/user/my-theme.git
+./scripts/git-deploy.sh theme example.com https://github.com/user/my-theme.git develop
+```
+
+**Deploy a plugin:**
+
+```bash
+./scripts/git-deploy.sh plugin example.com https://github.com/user/my-plugin.git
+./scripts/git-deploy.sh plugin example.com https://github.com/user/my-plugin.git main
+```
+
+**List Git deployments:**
+
+```bash
+./scripts/git-deploy.sh list example.com
+./scripts/git-deploy.sh list example.com theme
+./scripts/git-deploy.sh list example.com plugin
+```
+
+**Update all Git deployments:**
+
+```bash
+./scripts/git-deploy.sh update example.com
+```
+
+**Features:**
+- Automatic activation after deployment
+- Branch/tag support
+- Pull latest changes for existing deployments
+- Tracks repository URLs and branches
+- Integrates with notification system
+
+### Disk Quota Management
+
+Set and monitor per-site disk quotas to prevent one site from consuming all storage.
+
+**Set quota for a site:**
+
+```bash
+./scripts/quota-manager.sh set example.com 10000  # 10GB in MB
+```
+
+**Check site quota:**
+
+```bash
+./scripts/quota-manager.sh check example.com
+./scripts/quota-manager.sh stats example.com
+```
+
+**List all sites with quotas:**
+
+```bash
+./scripts/quota-manager.sh list
+```
+
+**Monitor all sites:**
+
+```bash
+./scripts/quota-manager.sh monitor 80  # Warn at 80% usage
+```
+
+**Remove custom quota (revert to default):**
+
+```bash
+./scripts/quota-manager.sh remove example.com
+```
+
+**Set default quota** (in `.env`):
+
+```env
+DEFAULT_SITE_QUOTA_MB=5000  # 5GB default
+```
+
+**Features:**
+- Per-site quota limits
+- Usage monitoring and alerts
+- Notifications when quotas exceeded (>80%, >100%)
+- Detailed usage breakdown by directory
+- Configurable default quotas
+
+**Automated monitoring:**
+
+Add to cron for regular checks:
+
+```env
+CUSTOM_CRON_JOBS="0 */6 * * * cd /wpfleet && ./scripts/quota-manager.sh monitor 80"
+```
 
 ## Usage
 

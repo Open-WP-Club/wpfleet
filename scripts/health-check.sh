@@ -8,6 +8,16 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Load environment variables
+if [ -f "$PROJECT_ROOT/.env" ]; then
+    set -a
+    source "$PROJECT_ROOT/.env"
+    set +a
+fi
+
+# Track issues for notifications
+HEALTH_ISSUES=()
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -31,6 +41,31 @@ print_error() {
     echo -e "  ${RED}✗${NC} $1"
 }
 
+# Track health issue for notification
+track_issue() {
+    local service="$1"
+    local issue="$2"
+    local severity="${3:-warning}"
+    HEALTH_ISSUES+=("$service|$issue|$severity")
+}
+
+# Send notifications for health issues
+send_health_notifications() {
+    if [ ${#HEALTH_ISSUES[@]} -eq 0 ]; then
+        return 0
+    fi
+
+    if ! command -v "$SCRIPT_DIR/notify.sh" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # Send notification for each issue
+    for issue_data in "${HEALTH_ISSUES[@]}"; do
+        IFS='|' read -r service issue severity <<< "$issue_data"
+        "$SCRIPT_DIR/notify.sh" health "$service" "$issue" "$severity" 2>/dev/null || true
+    done
+}
+
 # Check if service is healthy
 check_service() {
     local service=$1
@@ -46,14 +81,17 @@ check_service() {
                 return 0
             else
                 print_warning "$service is running but unhealthy (status: $status)"
+                track_issue "$service" "Service unhealthy (status: $status)" "warning"
                 return 1
             fi
         else
             print_error "$service is not running"
+            track_issue "$service" "Service not running" "error"
             return 1
         fi
     else
         print_error "$service container not found"
+        track_issue "$service" "Container not found" "error"
         return 1
     fi
 }
@@ -81,12 +119,13 @@ check_service "FrankenPHP" "wpfleet_frankenphp"
 print_header "Database Connectivity"
 if docker exec wpfleet_mariadb mysqladmin ping -h localhost --silent 2>/dev/null; then
     print_ok "MariaDB is accepting connections"
-    
+
     # Count databases
     db_count=$(docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "SHOW DATABASES LIKE 'wp_%';" 2>/dev/null | tail -n +2 | wc -l)
     print_ok "WordPress databases: $db_count"
 else
     print_error "MariaDB is not accepting connections"
+    track_issue "MariaDB" "Not accepting connections" "error"
 fi
 
 # Check Valkey connectivity
@@ -99,6 +138,7 @@ if docker exec wpfleet_valkey valkey-cli ping 2>/dev/null | grep -q PONG; then
     print_ok "Valkey memory usage: $valkey_memory"
 else
     print_error "Valkey is not responding"
+    track_issue "Valkey" "Not responding to ping" "error"
 fi
 
 # Check FrankenPHP/Caddy
@@ -146,7 +186,25 @@ fi
 
 # Check disk usage
 print_header "Disk Usage"
-df -h "$PROJECT_ROOT" | tail -1 | awk '{print "  Filesystem: " $1 "\n  Total: " $2 "\n  Used: " $3 " (" $5 ")\n  Available: " $4}'
+disk_info=$(df -h "$PROJECT_ROOT" | tail -1)
+disk_usage_percent=$(echo "$disk_info" | awk '{print $5}' | sed 's/%//')
+disk_available=$(echo "$disk_info" | awk '{print $4}')
+echo "$disk_info" | awk '{print "  Filesystem: " $1 "\n  Total: " $2 "\n  Used: " $3 " (" $5 ")\n  Available: " $4}'
+
+# Check if disk usage is high
+if [ "$disk_usage_percent" -ge 90 ]; then
+    print_error "Disk usage is critically high: ${disk_usage_percent}%"
+    track_issue "Disk Space" "Usage at ${disk_usage_percent}% (Critical)" "error"
+    if command -v "$SCRIPT_DIR/notify.sh" >/dev/null 2>&1; then
+        "$SCRIPT_DIR/notify.sh" disk "$disk_usage_percent" "$disk_available" "$PROJECT_ROOT" 2>/dev/null || true
+    fi
+elif [ "$disk_usage_percent" -ge 80 ]; then
+    print_warning "Disk usage is high: ${disk_usage_percent}%"
+    track_issue "Disk Space" "Usage at ${disk_usage_percent}% (Warning)" "warning"
+    if command -v "$SCRIPT_DIR/notify.sh" >/dev/null 2>&1; then
+        "$SCRIPT_DIR/notify.sh" disk "$disk_usage_percent" "$disk_available" "$PROJECT_ROOT" 2>/dev/null || true
+    fi
+fi
 
 # Check Docker resources
 print_header "Docker Resources"
@@ -191,3 +249,7 @@ php_version=$(docker exec wpfleet_frankenphp php -v | head -1)
 print_ok "PHP Version: $php_version"
 memory_limit=$(docker exec wpfleet_frankenphp php -r "echo ini_get('memory_limit');" 2>/dev/null)
 print_ok "Default Memory Limit: $memory_limit"
+
+# Send notifications for any health issues
+echo ""
+send_health_notifications

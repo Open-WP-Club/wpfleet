@@ -309,14 +309,27 @@ $(echo "$SITES" | sed 's/^/  - /')
 
 Backup location: $BACKUP_ROOT/$TIMESTAMP
 EOF
-        
+
         # Secure the summary
         chmod 600 "$BACKUP_ROOT/$TIMESTAMP/summary.txt" 2>/dev/null || true
-        
+
+        # Get total backup size for notification
+        local backup_size=$(du -sh "$BACKUP_ROOT/$TIMESTAMP" 2>/dev/null | cut -f1 || echo 'unknown')
+
         if [ $success_count -eq $total_count ]; then
             print_success "All $total_count sites backed up successfully to: $BACKUP_ROOT/$TIMESTAMP"
+
+            # Send success notification
+            if command -v "$SCRIPT_DIR/notify.sh" >/dev/null 2>&1; then
+                "$SCRIPT_DIR/notify.sh" backup success "$success_count" "$backup_size" 0 2>/dev/null || true
+            fi
         else
             print_error "$((total_count - success_count)) out of $total_count backups failed!"
+
+            # Send failure notification
+            if command -v "$SCRIPT_DIR/notify.sh" >/dev/null 2>&1; then
+                "$SCRIPT_DIR/notify.sh" backup error "$success_count" "$backup_size" "$((total_count - success_count))" 2>/dev/null || true
+            fi
         fi
         
         # Cleanup old backups
