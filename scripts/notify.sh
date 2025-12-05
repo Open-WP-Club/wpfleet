@@ -5,15 +5,13 @@
 
 set -e
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/lib/utils.sh"
 
-# Load environment variables
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    set -a
-    source "$PROJECT_ROOT/.env"
-    set +a
-fi
+# Load environment variables (optional for notify.sh)
+load_env "$PROJECT_ROOT/.env" 2>/dev/null || true
 
 # Notification configuration
 DISCORD_WEBHOOK_URL="${DISCORD_WEBHOOK_URL:-}"

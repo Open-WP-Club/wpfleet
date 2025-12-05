@@ -5,43 +5,17 @@
 
 set -e
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/lib/utils.sh"
 
 # Load environment variables
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    set -a
-    source "$PROJECT_ROOT/.env"
-    set +a
-fi
+load_env "$PROJECT_ROOT/.env" || exit 1
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-print_error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
-}
-
-print_success() {
-    echo -e "${GREEN}SUCCESS: $1${NC}"
-}
-
-print_info() {
-    echo -e "${YELLOW}INFO: $1${NC}"
-}
-
-# Function to execute MySQL command
+# Function to execute MySQL command (for backward compatibility)
 exec_mysql() {
-    docker exec -i wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} "$@"
-}
-
-# Function to get database for a domain
-get_db_name() {
-    local domain=$1
-    echo "wp_$(echo "$domain" | tr '.' '_' | tr '-' '_')"
+    docker_mysql "$@"
 }
 
 case "$1" in

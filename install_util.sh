@@ -5,36 +5,14 @@
 
 set -e
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-print_header() {
-    echo -e "\n${BLUE}=== $1 ===${NC}"
-}
-
-print_error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
-}
-
-print_success() {
-    echo -e "${GREEN}SUCCESS: $1${NC}"
-}
-
-print_info() {
-    echo -e "${YELLOW}INFO: $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}WARNING: $1${NC}"
-}
+# Load WPFleet libraries
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/scripts" && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/utils.sh"
 
 # Check if running as root
 check_root() {
-    if [ "$EUID" -ne 0 ]; then
+    if ! is_root; then
         print_error "This script must be run as root (use sudo)"
         exit 1
     fi

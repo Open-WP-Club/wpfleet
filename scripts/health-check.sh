@@ -1,45 +1,20 @@
 #!/bin/bash
 
-# WPFleet Health Check Script 
+# WPFleet Health Check Script
 # Monitor the health of all WPFleet services
 
 set -e
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/lib/utils.sh"
 
 # Load environment variables
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    set -a
-    source "$PROJECT_ROOT/.env"
-    set +a
-fi
+load_env "$PROJECT_ROOT/.env" || exit 1
 
 # Track issues for notifications
 HEALTH_ISSUES=()
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-print_header() {
-    echo -e "${BLUE}=== $1 ===${NC}"
-}
-
-print_ok() {
-    echo -e "  ${GREEN}✓${NC} $1"
-}
-
-print_warning() {
-    echo -e "  ${YELLOW}⚠${NC} $1"
-}
-
-print_error() {
-    echo -e "  ${RED}✗${NC} $1"
-}
 
 # Track health issue for notification
 track_issue() {
@@ -55,14 +30,10 @@ send_health_notifications() {
         return 0
     fi
 
-    if ! command -v "$SCRIPT_DIR/notify.sh" >/dev/null 2>&1; then
-        return 0
-    fi
-
     # Send notification for each issue
     for issue_data in "${HEALTH_ISSUES[@]}"; do
         IFS='|' read -r service issue severity <<< "$issue_data"
-        "$SCRIPT_DIR/notify.sh" health "$service" "$issue" "$severity" 2>/dev/null || true
+        send_health_notification "$service" "$issue" "$severity"
     done
 }
 

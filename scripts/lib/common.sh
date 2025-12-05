@@ -217,9 +217,152 @@ cleanup_on_shutdown() {
     exit 0
 }
 
+# Get script directory and project root
+# Returns: "script_dir|project_root"
+get_script_paths() {
+    local caller_script="${BASH_SOURCE[1]}"
+    local script_dir="$(cd "$(dirname "$caller_script")" && pwd)"
+    local project_root="$(dirname "$(dirname "$script_dir")")"
+    echo "$script_dir|$project_root"
+}
+
+# Format bytes to human readable format
+format_bytes() {
+    local bytes=$1
+    local precision=${2:-2}
+
+    if [ -z "$bytes" ] || [ "$bytes" -eq 0 ]; then
+        echo "0B"
+        return
+    fi
+
+    local units=("B" "KB" "MB" "GB" "TB" "PB")
+    local unit_index=0
+    local size=$bytes
+
+    while [ $(echo "$size >= 1024" | bc) -eq 1 ] && [ $unit_index -lt 5 ]; do
+        size=$(echo "scale=$precision; $size / 1024" | bc)
+        unit_index=$((unit_index + 1))
+    done
+
+    printf "%.${precision}f%s" "$size" "${units[$unit_index]}"
+}
+
+# Format KB to human readable format (common in df output)
+format_kb() {
+    local kb=$1
+    local bytes=$((kb * 1024))
+    format_bytes "$bytes"
+}
+
+# Format seconds to human readable duration
+format_duration() {
+    local seconds=$1
+
+    if [ -z "$seconds" ]; then
+        echo "0s"
+        return
+    fi
+
+    local days=$((seconds / 86400))
+    local hours=$(( (seconds % 86400) / 3600 ))
+    local minutes=$(( (seconds % 3600) / 60 ))
+    local secs=$((seconds % 60))
+
+    local result=""
+    [ $days -gt 0 ] && result="${days}d "
+    [ $hours -gt 0 ] && result="${result}${hours}h "
+    [ $minutes -gt 0 ] && result="${result}${minutes}m "
+    [ $secs -gt 0 ] || [ -z "$result" ] && result="${result}${secs}s"
+
+    echo "$result" | xargs
+}
+
+# Get timestamp in ISO 8601 format
+get_timestamp() {
+    date -u +"%Y-%m-%dT%H:%M:%SZ"
+}
+
+# Get timestamp for filenames (no special characters)
+get_timestamp_filename() {
+    date +"%Y%m%d_%H%M%S"
+}
+
+# Log message to file with timestamp
+log_to_file() {
+    local log_file=$1
+    local message=$2
+    local log_dir=$(dirname "$log_file")
+
+    # Create log directory if it doesn't exist
+    if [ ! -d "$log_dir" ]; then
+        mkdir -p "$log_dir" 2>/dev/null || return 1
+    fi
+
+    echo "[$(get_timestamp)] $message" >> "$log_file"
+}
+
+# Check if command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Check if running as root
+is_root() {
+    [ "$(id -u)" -eq 0 ]
+}
+
+# Get current user
+get_current_user() {
+    whoami
+}
+
+# Confirm action (ask yes/no)
+confirm() {
+    local prompt="${1:-Are you sure?}"
+    local default="${2:-n}"
+
+    local yn
+    if [ "$default" = "y" ]; then
+        prompt="$prompt [Y/n]: "
+    else
+        prompt="$prompt [y/N]: "
+    fi
+
+    read -p "$prompt" yn
+    yn=${yn:-$default}
+
+    case "${yn,,}" in
+        y|yes) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Wait for condition with timeout
+wait_for() {
+    local timeout=$1
+    local interval=${2:-1}
+    shift 2
+    local command=("$@")
+
+    local elapsed=0
+    while [ $elapsed -lt $timeout ]; do
+        if "${command[@]}"; then
+            return 0
+        fi
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
+    done
+
+    return 1
+}
+
 # Export functions so they're available to sourcing scripts
 export -f print_header print_ok print_warning print_error print_info print_success
 export -f validate_domain sanitize_domain_for_db safe_sed_replace
 export -f acquire_lock release_lock load_env check_docker check_container
 export -f validate_email generate_password retry_with_backoff check_disk_space
 export -f setup_shutdown_handler cleanup_on_shutdown
+export -f get_script_paths format_bytes format_kb format_duration
+export -f get_timestamp get_timestamp_filename log_to_file
+export -f command_exists is_root get_current_user confirm wait_for

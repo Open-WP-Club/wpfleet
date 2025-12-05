@@ -5,49 +5,24 @@
 
 set -e
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/lib/utils.sh"
 
 # Load environment variables
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    set -a
-    source "$PROJECT_ROOT/.env"
-    set +a
-fi
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-print_error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
-}
-
-print_success() {
-    echo -e "${GREEN}SUCCESS: $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}WARNING: $1${NC}"
-}
-
-print_info() {
-    echo -e "${BLUE}INFO: $1${NC}"
-}
+load_env "$PROJECT_ROOT/.env" || exit 1
 
 # Check if git is available
 check_git() {
-    if ! command -v git >/dev/null 2>&1; then
+    if ! command_exists git; then
         print_error "git is not installed!"
         exit 1
     fi
 }
 
-# Validate domain
-validate_domain() {
+# Legacy validate_domain wrapper (now uses library function)
+_validate_domain_legacy() {
     local domain=$1
     if [ ! -d "$PROJECT_ROOT/data/wordpress/$domain" ]; then
         print_error "Site not found: $domain"

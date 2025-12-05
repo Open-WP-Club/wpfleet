@@ -5,45 +5,10 @@
 
 set -euo pipefail
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-print_header() {
-    echo -e "\n${BLUE}=== $1 ===${NC}"
-}
-
-print_ok() {
-    echo -e "  ${GREEN}✓${NC} $1"
-}
-
-print_warning() {
-    echo -e "  ${YELLOW}⚠${NC} $1"
-}
-
-print_error() {
-    echo -e "  ${RED}✗${NC} $1"
-}
-
-print_info() {
-    echo -e "  ${BLUE}ℹ${NC} $1"
-}
-
-# Function to check if container is running
-check_container() {
-    local container=$1
-    if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
-        return 0
-    else
-        return 1
-    fi
-}
+source "$SCRIPT_DIR/lib/utils.sh"
 
 # Function to analyze FrankenPHP performance
 analyze_performance() {
