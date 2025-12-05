@@ -387,10 +387,13 @@ EOF
     
     # Fix permissions
     docker exec wpfleet_frankenphp chown -R www-data:www-data "/var/www/html/$domain"
-    
+
     print_success "Site imported successfully!"
     print_info "Original wp-config.php backed up to: wp-config.php.backup"
     print_info "Site accessible at: https://$domain"
+    echo ""
+    print_info "To enable full-page caching, run:"
+    echo "  ./scripts/cache-manager.sh setup $domain"
 }
 
 # Install clean WordPress (existing functionality)
@@ -466,12 +469,20 @@ PHP
         exit 1
     }
     
-    # Install Redis cache plugin
+    # Install and configure Redis cache plugin
+    print_info "Setting up Redis Object Cache..."
     docker exec wpfleet_frankenphp bash -c "
-        cd /var/www/html/$domain && 
+        cd /var/www/html/$domain &&
         wp plugin install redis-cache --activate --allow-root &&
         wp redis enable --allow-root
     " || print_info "Redis cache plugin installation failed (non-critical)"
+
+    # Install and configure Cache Enabler for full-page caching
+    print_info "Setting up full-page cache (Cache Enabler)..."
+    docker exec wpfleet_frankenphp bash -c "
+        cd /var/www/html/$domain &&
+        wp plugin install cache-enabler --activate --allow-root
+    " || print_info "Cache Enabler plugin installation failed (non-critical)"
     
     # Fix permissions
     docker exec wpfleet_frankenphp chown -R www-data:www-data "/var/www/html/$domain"
@@ -479,6 +490,11 @@ PHP
     print_success "Clean WordPress installation completed!"
     print_info "Admin password: $wp_admin_password"
     print_info "Access your site at: https://$domain"
+    echo ""
+    print_info "Cache Configuration:"
+    echo "  - Object Cache: Redis (via Valkey)"
+    echo "  - Page Cache: Cache Enabler"
+    echo "  - Manage cache: ./scripts/cache-manager.sh"
 }
 
 # Main add site function
