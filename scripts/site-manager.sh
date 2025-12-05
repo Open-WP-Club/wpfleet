@@ -5,58 +5,17 @@
 
 set -e
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/lib/utils.sh"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-# Load environment variables safely
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    set -a
-    source "$PROJECT_ROOT/.env"
-    set +a
-fi
-
-# Functions
-print_error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
-}
-
-print_success() {
-    echo -e "${GREEN}SUCCESS: $1${NC}"
-}
-
-print_info() {
-    echo -e "${YELLOW}INFO: $1${NC}"
-}
-
-# Input validation function
-validate_domain() {
-    if [[ -z "$1" ]]; then
-        print_error "Domain cannot be empty"
-        return 1
-    fi
-    if [[ ! "$1" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$ ]]; then
-        print_error "Invalid domain format: $1"
-        return 1
-    fi
-    return 0
-}
-
-sanitize_domain_for_db() {
-    echo "$1" | tr '.' '_' | tr '-' '_'
-}
+# Load environment variables
+load_env "$PROJECT_ROOT/.env" || exit 1
 
 # Check if Docker is running and containers exist
-check_docker() {
-    if ! docker ps >/dev/null 2>&1; then
-        print_error "Docker is not running or not accessible!"
-        exit 1
-    fi
+check_docker_containers() {
+    check_docker || exit 1
     
     if ! docker ps --format '{{.Names}}' | grep -q "^wpfleet_frankenphp$"; then
         print_error "FrankenPHP container not running! Start it first with: docker-compose up -d"

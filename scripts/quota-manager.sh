@@ -5,49 +5,29 @@
 
 set -e
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/lib/utils.sh"
 
 # Load environment variables
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    set -a
-    source "$PROJECT_ROOT/.env"
-    set +a
-fi
+load_env "$PROJECT_ROOT/.env" || exit 1
 
 # Configuration
 QUOTA_CONFIG_DIR="$PROJECT_ROOT/data/quotas"
 WORDPRESS_DIR="$PROJECT_ROOT/data/wordpress"
 DEFAULT_QUOTA_MB="${DEFAULT_SITE_QUOTA_MB:-5000}"  # 5GB default
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-print_error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
-}
-
-print_success() {
-    echo -e "${GREEN}SUCCESS: $1${NC}"
-}
-
-print_warning() {
-    echo -e "${YELLOW}WARNING: $1${NC}"
-}
-
-print_info() {
-    echo -e "${BLUE}INFO: $1${NC}"
-}
-
 # Create quota config directory
 mkdir -p "$QUOTA_CONFIG_DIR"
 
-# Convert bytes to human readable
+# Convert bytes to human readable (wrapper for compatibility)
 bytes_to_human() {
+    format_bytes "$@"
+}
+
+# Legacy function wrapper
+_original_bytes_to_human() {
     local bytes=$1
     if [ $bytes -lt 1024 ]; then
         echo "${bytes}B"

@@ -5,11 +5,10 @@
 
 set -e
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
-# Source common library
-source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/lib/utils.sh"
 
 # Load environment
 load_env "$PROJECT_ROOT/.env" || exit 1

@@ -1,27 +1,16 @@
 #!/bin/bash
 
-# WPFleet WP-CLI Wrapper 
+# WPFleet WP-CLI Wrapper
 # Execute WP-CLI commands for specific sites
 
 set -e
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-CONTAINER="wpfleet_frankenphp"
+source "$SCRIPT_DIR/lib/utils.sh"
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-print_error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
-}
-
-print_info() {
-    echo -e "${YELLOW}INFO: $1${NC}"
-}
+CONTAINER="$FRANKENPHP_CONTAINER"
 
 # Check if domain is provided
 if [ -z "$1" ]; then

@@ -5,47 +5,18 @@
 
 set -e
 
+# Load WPFleet libraries
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/lib/utils.sh"
 
 # Load environment variables
-if [ -f "$PROJECT_ROOT/.env" ]; then
-    set -a
-    source "$PROJECT_ROOT/.env"
-    set +a
-fi
+load_env "$PROJECT_ROOT/.env" || exit 1
 
 # Configuration
 BACKUP_ROOT="${BACKUP_ROOT:-$PROJECT_ROOT/backups}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-30}"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
-
-print_error() {
-    echo -e "${RED}ERROR: $1${NC}" >&2
-}
-
-print_success() {
-    echo -e "${GREEN}SUCCESS: $1${NC}"
-}
-
-print_info() {
-    echo -e "${YELLOW}INFO: $1${NC}"
-}
-
-# Check if Docker is running
-check_docker() {
-    if ! docker ps >/dev/null 2>&1; then
-        print_error "Docker is not running or not accessible!"
-        print_info "Please start Docker and ensure you have proper permissions"
-        exit 1
-    fi
-}
+TIMESTAMP=$(get_timestamp_filename)
 
 # Secure backup function
 secure_backup() {
@@ -124,7 +95,7 @@ mkdir -p "$BACKUP_ROOT/configs"
 backup_site() {
     local domain=$1
     local container_name="wpfleet_$domain"
-    local db_name="wp_$(echo "$domain" | tr '.' '_' | tr '-' '_')"
+    local db_name=$(get_db_name "$domain")
     
     print_info "Backing up site: $domain"
     
@@ -320,16 +291,12 @@ EOF
             print_success "All $total_count sites backed up successfully to: $BACKUP_ROOT/$TIMESTAMP"
 
             # Send success notification
-            if command -v "$SCRIPT_DIR/notify.sh" >/dev/null 2>&1; then
-                "$SCRIPT_DIR/notify.sh" backup success "$success_count" "$backup_size" 0 2>/dev/null || true
-            fi
+            send_backup_notification "success" "$success_count" "$backup_size" 0
         else
             print_error "$((total_count - success_count)) out of $total_count backups failed!"
 
             # Send failure notification
-            if command -v "$SCRIPT_DIR/notify.sh" >/dev/null 2>&1; then
-                "$SCRIPT_DIR/notify.sh" backup error "$success_count" "$backup_size" "$((total_count - success_count))" 2>/dev/null || true
-            fi
+            send_backup_notification "error" "$success_count" "$backup_size" "$((total_count - success_count))"
         fi
         
         # Cleanup old backups
