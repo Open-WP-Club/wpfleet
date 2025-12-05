@@ -6,7 +6,8 @@
     "The project uses bash scripts for site management, automated backups, notifications, git deployments, and quota management.",
     "Core components: FrankenPHP (PHP server), Caddy (auto SSL), MariaDB (shared database), Valkey (object cache)",
     "Main scripts in scripts/ directory handle site operations, monitoring, backups, and deployments",
-    "Docker Compose orchestrates all services with security isolation and resource limits"
+    "Docker Compose orchestrates all services with security isolation and resource limits",
+    "Comprehensive documentation available in docs/ directory covering all features and operations"
   ],
   "projectInfo": {
     "type": "infrastructure",
@@ -30,13 +31,35 @@
     "Always update documentation when adding new features",
     "Preserve backward compatibility for existing installations",
     "Test scripts before committing changes",
-    "Follow the notification system patterns for user alerts"
+    "Follow the notification system patterns for user alerts",
+    "Keep README.md concise - detailed documentation belongs in docs/"
   ],
   "architecture": {
     "scripts": "Management scripts for all operations",
     "config": "Configuration files (Caddy, PHP, etc.)",
     "docker": "Dockerfiles for custom images",
     "data": "Runtime data (WordPress files, databases, logs, backups)",
-    "scripts/lib": "Shared bash libraries and utilities"
+    "scripts/lib": "Shared bash libraries and utilities",
+    "docs": "Comprehensive documentation for all features and operations"
+  },
+  "documentation": {
+    "getting_started": [
+      "docs/installation.md - Installation guide and requirements",
+      "docs/migration.md - Migrating existing WordPress sites"
+    ],
+    "core_features": [
+      "docs/site-management.md - Site operations (add, remove, clone)",
+      "docs/cache-management.md - Object and full-page caching",
+      "docs/backups.md - Automated backups and restoration",
+      "docs/git-deployments.md - Git-based theme/plugin deployments",
+      "docs/disk-quotas.md - Per-site storage limits"
+    ],
+    "operations": [
+      "docs/monitoring.md - Real-time dashboard and health checks",
+      "docs/notifications.md - Discord and Slack integration",
+      "docs/security.md - Security features and best practices",
+      "docs/scaling.md - Scaling strategies",
+      "docs/troubleshooting.md - Common issues and solutions"
+    ]
   }
 }
