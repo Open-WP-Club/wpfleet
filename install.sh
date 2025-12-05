@@ -79,7 +79,6 @@ directories=(
     "data/valkey"
     "data/logs"
     "config/sites"
-    "config/fail2ban/filter.d"
     "backups/databases"
     "backups/files"
 )
@@ -183,26 +182,6 @@ else
     print_error "Valkey failed to start"
     exit 1
 fi
-
-# Create Fail2ban configuration
-print_header "Creating Security Configuration"
-cat > config/fail2ban/jail.local << 'EOF'
-[wordpress]
-enabled = true
-filter = wordpress
-logpath = /path/to/wpfleet/data/logs/*/access.log
-maxretry = 5
-findtime = 300
-bantime = 86400
-EOF
-
-cat > config/fail2ban/filter.d/wordpress.conf << 'EOF'
-[Definition]
-failregex = ^<HOST> .* "POST .*/(wp-login\.php|xmlrpc\.php).* (401|403)
-ignoreregex =
-EOF
-
-print_success "Security configuration created"
 
 # Final summary
 print_header "Installation Complete!"

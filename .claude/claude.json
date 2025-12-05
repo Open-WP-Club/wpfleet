@@ -1,0 +1,42 @@
+{
+  "name": "WPFleet",
+  "description": "Docker-based WordPress Multi-Site Hosting Platform",
+  "context": [
+    "WPFleet is a production-ready solution for hosting multiple WordPress sites using Docker, FrankenPHP, MariaDB, and Valkey (Redis-compatible cache).",
+    "The project uses bash scripts for site management, automated backups, notifications, git deployments, and quota management.",
+    "Core components: FrankenPHP (PHP server), Caddy (auto SSL), MariaDB (shared database), Valkey (object cache)",
+    "Main scripts in scripts/ directory handle site operations, monitoring, backups, and deployments",
+    "Docker Compose orchestrates all services with security isolation and resource limits"
+  ],
+  "projectInfo": {
+    "type": "infrastructure",
+    "languages": ["bash", "dockerfile", "yaml"],
+    "framework": "docker-compose",
+    "technologies": [
+      "Docker",
+      "FrankenPHP",
+      "Caddy",
+      "MariaDB",
+      "Valkey",
+      "WordPress",
+      "WP-CLI"
+    ]
+  },
+  "guidelines": [
+    "Follow bash best practices: use shellcheck-compliant syntax",
+    "Maintain consistent error handling across scripts",
+    "Use the existing logging patterns in scripts/lib/",
+    "Docker security: maintain container isolation and resource limits",
+    "Always update documentation when adding new features",
+    "Preserve backward compatibility for existing installations",
+    "Test scripts before committing changes",
+    "Follow the notification system patterns for user alerts"
+  ],
+  "architecture": {
+    "scripts": "Management scripts for all operations",
+    "config": "Configuration files (Caddy, PHP, etc.)",
+    "docker": "Dockerfiles for custom images",
+    "data": "Runtime data (WordPress files, databases, logs, backups)",
+    "scripts/lib": "Shared bash libraries and utilities"
+  }
+}
