@@ -131,9 +131,7 @@ install_dependencies() {
                 software-properties-common \
                 unzip \
                 wget \
-                htop \
-                fail2ban \
-                ufw
+                htop
             ;;
         rhel|fedora)
             if command -v dnf >/dev/null 2>&1; then
@@ -144,9 +142,7 @@ install_dependencies() {
                     lsb-release \
                     unzip \
                     wget \
-                    htop \
-                    fail2ban \
-                    firewalld
+                    htop
             else
                 yum install -y \
                     curl \
@@ -154,9 +150,7 @@ install_dependencies() {
                     gnupg \
                     unzip \
                     wget \
-                    htop \
-                    fail2ban \
-                    firewalld
+                    htop 
             fi
             ;;
     esac

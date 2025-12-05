@@ -252,8 +252,6 @@ For production sites, consider:
 - **WordPress Security Plugins**: Wordfence, iThemes Security, Sucuri
 - **Application-level security**: WordPress plugins handle rate limiting better with Docker
 
-> **Note on Fail2ban:** Not recommended with Docker due to iptables conflicts. Use application-level security and CDN protection instead.
-
 ### SSL Certificate Monitoring
 
 Check SSL certificate expiration:
