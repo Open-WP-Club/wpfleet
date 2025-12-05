@@ -3,11 +3,25 @@
 # MariaDB initialization script
 # This runs only on first container creation
 
+set -e
+
 echo "WPFleet MariaDB Initialization"
 echo "=============================="
 
+# Validate required environment variables
+if [[ -z "${MYSQL_ROOT_PASSWORD}" ]] || [[ -z "${MYSQL_USER}" ]] || [[ -z "${MYSQL_PASSWORD}" ]]; then
+    echo "ERROR: Required environment variables not set"
+    exit 1
+fi
+
+# Validate that usernames/passwords don't contain SQL injection characters
+if [[ "${MYSQL_USER}" =~ [\'\"\\] ]] || [[ "${MYSQL_PASSWORD}" =~ [\'\"\\] ]] || [[ "${MYSQL_ROOT_PASSWORD}" =~ [\'\"\\] ]]; then
+    echo "ERROR: Passwords and usernames cannot contain quotes or backslashes"
+    exit 1
+fi
+
 # Create wpfleet user if not exists
-mysql -uroot -p${MYSQL_ROOT_PASSWORD} <<EOF
+mysql -uroot -p"${MYSQL_ROOT_PASSWORD}" <<EOF
 -- Create wpfleet user with necessary privileges
 CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'%' IDENTIFIED BY '${MYSQL_PASSWORD}';
 
