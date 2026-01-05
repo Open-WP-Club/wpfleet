@@ -115,14 +115,16 @@ innodb_monitor_enable = 'module_dml'
 innodb_monitor_enable = 'module_lock'
 innodb_monitor_enable = 'module_os'
 
-# Binary Logging (for backup and replication)
-log-bin = mysql-bin
-binlog_format = ROW
-binlog_cache_size = 2M
-max_binlog_cache_size = 128M
-max_binlog_size = 512M
-expire_logs_days = 7
-sync_binlog = 0
+# Binary Logging (disabled for better write performance on single-server setup)
+# Uncomment below if you need replication or point-in-time recovery
+# log-bin = mysql-bin
+# binlog_format = ROW
+# binlog_cache_size = 2M
+# max_binlog_cache_size = 128M
+# max_binlog_size = 512M
+# expire_logs_days = 7
+# sync_binlog = 0
+skip-log-bin
 
 # Slow Query Log (for performance monitoring)
 slow_query_log = 1
@@ -152,12 +154,12 @@ event_scheduler = ON
 # Session-specific settings for WordPress optimization
 init_connect = "SET sql_mode='ERROR_FOR_DIVISION_BY_ZERO,NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION'; SET autocommit=1;"
 
-# Group Replication (for future horizontal scaling)
-loose-group_replication_group_name = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-loose-group_replication_start_on_boot = off
-loose-group_replication_local_address = "127.0.0.1:33061"
-loose-group_replication_group_seeds = "127.0.0.1:33061"
-loose-group_replication_bootstrap_group = off
+# Group Replication (disabled - uncomment if needed for horizontal scaling)
+# loose-group_replication_group_name = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+# loose-group_replication_start_on_boot = off
+# loose-group_replication_local_address = "127.0.0.1:33061"
+# loose-group_replication_group_seeds = "127.0.0.1:33061"
+# loose-group_replication_bootstrap_group = off
 
 [mysqldump]
 quick

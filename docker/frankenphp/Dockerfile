@@ -1,4 +1,4 @@
-ARG PHP_VERSION=8.3
+ARG PHP_VERSION=8.4
 
 # Build stage - compile extensions
 FROM dunglas/frankenphp:latest-php${PHP_VERSION} AS builder
@@ -36,9 +36,9 @@ RUN apt-get update && apt-get install -y \
   pcntl \
   posix \
   && pecl install \
-  redis-6.0.2 \
-  imagick-3.7.0 \
-  apcu-5.1.23 \
+  redis-6.3.0 \
+  imagick-3.8.1 \
+  apcu-5.1.24 \
   && docker-php-ext-enable \
   redis \
   imagick \
