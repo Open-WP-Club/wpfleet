@@ -74,7 +74,7 @@ services:
     build:
       context: ./docker/frankenphp
       args:
-        PHP_VERSION: ${PHP_VERSION:-8.3}
+        PHP_VERSION: ${PHP_VERSION:-8.4}
     container_name: wpfleet_frankenphp
     restart: unless-stopped
     environment:
