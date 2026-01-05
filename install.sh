@@ -45,99 +45,31 @@ fi
 print_success "Docker Compose found"
 
 # Check if running as root
-if [ "$EUID" -eq 0 ]; then
+if is_root; then
     print_warning "Running as root. It's recommended to run as a regular user with docker permissions."
 fi
 
-print_warning() {
-    echo -e "${YELLOW}WARNING: $1${NC}" >&2
-}
-
 # Create directory structure
 print_header "Creating Directory Structure"
-directories=(
-    "data/wordpress"
-    "data/mariadb"
-    "data/valkey"
-    "data/logs"
-    "config/sites"
-    "backups/databases"
-    "backups/files"
-)
-
-for dir in "${directories[@]}"; do
-    mkdir -p "$dir"
-    print_success "Created: $dir"
-done
-
-# Create .gitkeep files
-touch data/wordpress/.gitkeep
-touch data/mariadb/.gitkeep
-touch data/valkey/.gitkeep
-touch data/logs/.gitkeep
-touch config/sites/.gitkeep
+create_directory_structure
 
 # Setup environment file
 print_header "Setting Up Environment"
-
-if [ -f .env ]; then
-    print_info ".env file already exists"
-    read -p "Do you want to regenerate it? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_info "Keeping existing .env file"
-    else
-        mv .env .env.backup
-        print_info "Backed up existing .env to .env.backup"
-        cp .env.example .env
-    fi
-else
-    cp .env.example .env
-    print_success "Created .env file from template"
-fi
+setup_env_file .env.example .env
 
 # Generate secure passwords
 if grep -q "your_secure_root_password_here" .env; then
     print_info "Generating secure passwords..."
-
-    MYSQL_ROOT_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-    MYSQL_USER_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-    REDIS_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-    WP_ADMIN_PASS=$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)
-
-    # Update .env file based on OS
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sed -i '' "s/your_secure_root_password_here/$MYSQL_ROOT_PASS/g" .env
-        sed -i '' "s/your_secure_password_here/$MYSQL_USER_PASS/g" .env
-        sed -i '' "s/generate_secure_redis_password_here/$REDIS_PASS/g" .env
-        sed -i '' "s/generate_secure_password_here/$WP_ADMIN_PASS/g" .env
-    else
-        # Linux
-        sed -i "s/your_secure_root_password_here/$MYSQL_ROOT_PASS/g" .env
-        sed -i "s/your_secure_password_here/$MYSQL_USER_PASS/g" .env
-        sed -i "s/generate_secure_redis_password_here/$REDIS_PASS/g" .env
-        sed -i "s/generate_secure_password_here/$WP_ADMIN_PASS/g" .env
-    fi
-
-    print_success "Generated secure passwords"
+    update_env_passwords .env
 fi
 
 # Get user email
 read -p "Enter admin email address: " ADMIN_EMAIL
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    sed -i '' "s/admin@yourdomain.com/$ADMIN_EMAIL/g" .env
-    sed -i '' "s/ssl@yourdomain.com/$ADMIN_EMAIL/g" .env
-else
-    sed -i "s/admin@yourdomain.com/$ADMIN_EMAIL/g" .env
-    sed -i "s/ssl@yourdomain.com/$ADMIN_EMAIL/g" .env
-fi
+update_env_email .env "$ADMIN_EMAIL"
 
 # Make scripts executable
 print_header "Setting Up Scripts"
-chmod +x scripts/*.sh
-chmod +x docker/mariadb/init/*.sh 2>/dev/null || true
-print_success "Scripts are now executable"
+make_scripts_executable scripts
 
 # Build images
 print_header "Building Docker Images"
@@ -148,19 +80,14 @@ print_success "Docker images built"
 print_header "Starting Core Services"
 docker compose up -d mariadb valkey
 print_info "Waiting for services to be ready..."
-sleep 10
 
 # Verify services
-if docker exec wpfleet_mariadb mysqladmin ping -h localhost --silent 2>/dev/null; then
-    print_success "MariaDB is ready"
-else
+if ! wait_for_service "MariaDB" "docker exec wpfleet_mariadb mysqladmin ping -h localhost --silent" 30; then
     print_error "MariaDB failed to start"
     exit 1
 fi
 
-if docker exec wpfleet_valkey valkey-cli ping 2>/dev/null | grep -q PONG; then
-    print_success "Valkey is ready"
-else
+if ! wait_for_service "Valkey" "docker exec wpfleet_valkey valkey-cli ping | grep -q PONG" 30; then
     print_error "Valkey failed to start"
     exit 1
 fi

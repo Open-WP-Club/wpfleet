@@ -10,88 +10,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/scripts" && pwd)"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib/utils.sh"
 
-# Check if running as root
-check_root() {
-    if ! is_root; then
-        print_error "This script must be run as root (use sudo)"
-        exit 1
-    fi
-}
-
-# Detect OS
-detect_os() {
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS=$NAME
-        VER=$VERSION_ID
-        
-        case $ID in
-            ubuntu)
-                OS_TYPE="ubuntu"
-                ;;
-            debian)
-                OS_TYPE="debian"
-                ;;
-            centos|rhel|rocky|almalinux)
-                OS_TYPE="rhel"
-                ;;
-            fedora)
-                OS_TYPE="fedora"
-                ;;
-            *)
-                print_error "Unsupported operating system: $ID"
-                exit 1
-                ;;
-        esac
-    else
-        print_error "Cannot detect operating system"
-        exit 1
-    fi
-    
-    print_info "Detected OS: $OS ($VER)"
-}
-
-# Check system requirements
-check_requirements() {
-    print_header "Checking System Requirements"
-    
-    # Check architecture
-    ARCH=$(uname -m)
-    if [[ "$ARCH" != "x86_64" && "$ARCH" != "aarch64" && "$ARCH" != "arm64" ]]; then
-        print_error "Unsupported architecture: $ARCH"
-        exit 1
-    fi
-    print_success "Architecture: $ARCH"
-    
-    # Check memory (minimum 2GB recommended)
-    MEMORY_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
-    MEMORY_GB=$((MEMORY_KB / 1024 / 1024))
-    
-    if [ $MEMORY_GB -lt 2 ]; then
-        print_warning "Low memory detected: ${MEMORY_GB}GB (2GB+ recommended for WPFleet)"
-    else
-        print_success "Memory: ${MEMORY_GB}GB"
-    fi
-    
-    # Check disk space (minimum 20GB recommended)
-    DISK_SPACE=$(df / | tail -1 | awk '{print $4}')
-    DISK_SPACE_GB=$((DISK_SPACE / 1024 / 1024))
-    
-    if [ $DISK_SPACE_GB -lt 20 ]; then
-        print_warning "Low disk space: ${DISK_SPACE_GB}GB available (20GB+ recommended)"
-    else
-        print_success "Disk space: ${DISK_SPACE_GB}GB available"
-    fi
-    
-    # Check if ports 80 and 443 are available
-    if ss -tulpn | grep -q ":80 "; then
-        print_warning "Port 80 is already in use"
-    fi
-    
-    if ss -tulpn | grep -q ":443 "; then
-        print_warning "Port 443 is already in use"
-    fi
-}
+# Note: check_root, detect_os, and check_requirements functions
+# are now provided by scripts/lib/system.sh
 
 # Install dependencies based on OS
 install_dependencies() {
@@ -458,9 +378,14 @@ EOF
         exit 0
     fi
     
-    check_root
+    # Check if running as root
+    if ! is_root; then
+        print_error "This script must be run as root (use sudo)"
+        exit 1
+    fi
+
     detect_os
-    check_requirements
+    check_system_requirements
     install_dependencies
     remove_old_docker
     install_docker

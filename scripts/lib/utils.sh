@@ -8,10 +8,12 @@ LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Source all library files in order
 source "$LIB_DIR/common.sh"
+source "$LIB_DIR/system.sh"
 source "$LIB_DIR/docker.sh"
 source "$LIB_DIR/database.sh"
 source "$LIB_DIR/validation.sh"
 source "$LIB_DIR/notifications.sh"
+source "$LIB_DIR/install.sh"
 
 # Set PROJECT_ROOT if not already set
 if [[ -z "$PROJECT_ROOT" ]]; then
