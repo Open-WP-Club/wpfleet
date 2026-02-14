@@ -596,8 +596,302 @@ Commit to long-term instances for discounts:
 - [ ] Document scaling procedures
 - [ ] Plan for failover and redundancy
 
+## Auto-Scaling Strategies
+
+Automated scaling removes manual intervention by making scaling decisions based on metrics.
+
+### Metrics-Based Decisions
+
+Define thresholds that trigger scaling actions:
+
+| Metric | Scale Up Trigger | Scale Down Trigger | Cool-Down |
+|--------|-----------------|-------------------|-----------|
+| CPU | >70% for 5 min | <20% for 30 min | 10 min |
+| Memory | >80% for 5 min | <40% for 30 min | 10 min |
+| Request latency | p95 >2s for 5 min | p95 <200ms for 30 min | 15 min |
+| Active connections | >80% of max | <20% of max | 10 min |
+
+**Cool-down periods** prevent rapid scale up/down oscillation. After any scaling event, ignore triggers for the cool-down duration.
+
+### Monitoring Script Integration
+
+Use the existing `health-check.sh` output as a scaling signal:
+
+```bash
+#!/bin/bash
+# auto-scale-check.sh - Example scaling decision script
+
+CPU_THRESHOLD=70
+MEM_THRESHOLD=80
+COOLDOWN_FILE="/tmp/wpfleet_scale_cooldown"
+COOLDOWN_SECONDS=600
+
+# Check cool-down
+if [ -f "$COOLDOWN_FILE" ]; then
+    last_scale=$(cat "$COOLDOWN_FILE")
+    now=$(date +%s)
+    if (( now - last_scale < COOLDOWN_SECONDS )); then
+        echo "In cool-down period, skipping"
+        exit 0
+    fi
+fi
+
+# Get current CPU usage from container stats
+CPU=$(docker stats wpfleet_frankenphp --no-stream --format "{{.CPUPerc}}" | tr -d '%')
+MEM=$(docker stats wpfleet_frankenphp --no-stream --format "{{.MemPerc}}" | tr -d '%')
+
+if (( $(echo "$CPU > $CPU_THRESHOLD" | bc -l) )) || \
+   (( $(echo "$MEM > $MEM_THRESHOLD" | bc -l) )); then
+    echo "Threshold exceeded: CPU=${CPU}%, MEM=${MEM}%"
+    # Trigger your scaling action here
+    date +%s > "$COOLDOWN_FILE"
+fi
+```
+
+## Container Auto-Scaling with Docker
+
+### Scaling the Web Tier with Docker Compose
+
+For stateless web workers, use `docker compose --scale`:
+
+```bash
+# Scale FrankenPHP to 3 instances
+docker compose up -d --scale frankenphp=3
+```
+
+This requires a load balancer in front. Add one to your `docker-compose.yml`:
+
+```yaml
+services:
+  loadbalancer:
+    image: caddy:latest
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./config/caddy/Caddyfile.lb:/etc/caddy/Caddyfile
+    depends_on:
+      - frankenphp
+
+  frankenphp:
+    # ... existing config ...
+    # Remove direct port bindings when using a load balancer
+    expose:
+      - "443"
+```
+
+**Load balancer Caddyfile:**
+
+```
+{
+    auto_https off
+}
+
+:80, :443 {
+    reverse_proxy frankenphp:443 {
+        lb_policy round_robin
+        health_uri /wp-admin/install.php
+        health_interval 30s
+    }
+}
+```
+
+### Scaling Limitations
+
+Docker Compose scaling works for stateless services. WPFleet has constraints:
+
+- **WordPress files** must be on shared storage (NFS/GlusterFS) when using multiple web instances
+- **Database** is a single instance -- scale via read replicas, not multiple containers
+- **Valkey** is a single instance -- use Redis Sentinel or Cluster for HA
+- **SSL certificates** must be shared or managed at the load balancer level
+
+## Cloud Provider Auto-Scaling
+
+### AWS Auto Scaling Group
+
+```bash
+# Create launch template
+aws ec2 create-launch-template \
+    --launch-template-name wpfleet-web \
+    --launch-template-data '{
+        "ImageId": "ami-YOUR-WPFLEET-AMI",
+        "InstanceType": "c6i.xlarge",
+        "UserData": "'$(base64 -w0 <<'USERDATA'
+#!/bin/bash
+cd /opt/wpfleet
+docker compose up -d
+USERDATA
+)'"
+    }'
+
+# Create Auto Scaling Group
+aws autoscaling create-auto-scaling-group \
+    --auto-scaling-group-name wpfleet-asg \
+    --launch-template LaunchTemplateName=wpfleet-web,Version='$Latest' \
+    --min-size 2 \
+    --max-size 10 \
+    --desired-capacity 2 \
+    --target-group-arns arn:aws:elasticloadbalancing:REGION:ACCOUNT:targetgroup/wpfleet/ID
+
+# Create scaling policy (target tracking)
+aws autoscaling put-scaling-policy \
+    --auto-scaling-group-name wpfleet-asg \
+    --policy-name cpu-target-tracking \
+    --policy-type TargetTrackingScaling \
+    --target-tracking-configuration '{
+        "PredefinedMetricSpecification": {
+            "PredefinedMetricType": "ASGAverageCPUUtilization"
+        },
+        "TargetValue": 70.0,
+        "ScaleInCooldown": 300,
+        "ScaleOutCooldown": 60
+    }'
+```
+
+### DigitalOcean
+
+DigitalOcean doesn't have native auto-scaling groups, but you can script it:
+
+```bash
+# Create a new droplet when needed
+doctl compute droplet create wpfleet-web-$(date +%s) \
+    --image YOUR_SNAPSHOT_ID \
+    --size s-4vcpu-8gb \
+    --region nyc1 \
+    --tag-name wpfleet-web \
+    --user-data '#!/bin/bash
+cd /opt/wpfleet && docker compose up -d'
+
+# Add to load balancer
+doctl compute load-balancer add-droplets YOUR_LB_ID \
+    --droplet-ids NEW_DROPLET_ID
+```
+
+### Hetzner Cloud
+
+```bash
+# Scale using hcloud CLI
+hcloud server create \
+    --name wpfleet-web-$(date +%s) \
+    --type cx31 \
+    --image YOUR_SNAPSHOT_ID \
+    --location nbg1 \
+    --label env=production \
+    --label role=web \
+    --user-data '#!/bin/bash
+cd /opt/wpfleet && docker compose up -d'
+
+# Add to load balancer
+hcloud load-balancer add-target YOUR_LB_ID \
+    --server NEW_SERVER_NAME
+```
+
+## Health-Check Driven Scaling
+
+Integrate WPFleet's existing monitoring with scaling decisions:
+
+```bash
+#!/bin/bash
+# health-scale.sh - Scale based on health check results
+
+source scripts/lib/utils.sh
+
+# Run health check and capture output
+HEALTH_OUTPUT=$(./scripts/health-check.sh 2>&1)
+
+# Parse critical issues
+CRITICAL_COUNT=$(echo "$HEALTH_OUTPUT" | grep -c "CRITICAL\|FAIL" || true)
+WARNING_COUNT=$(echo "$HEALTH_OUTPUT" | grep -c "WARNING\|WARN" || true)
+
+if [ "$CRITICAL_COUNT" -gt 0 ]; then
+    print_error "Critical issues detected ($CRITICAL_COUNT), triggering scale-up"
+    # Your scale-up command here
+elif [ "$WARNING_COUNT" -gt 2 ]; then
+    print_warning "Multiple warnings ($WARNING_COUNT), consider scaling"
+    # Send notification via existing notify.sh
+    ./scripts/notify.sh "WPFleet: $WARNING_COUNT warnings detected, consider scaling"
+fi
+```
+
+### Cron Integration
+
+Add health-based scaling checks to the cron schedule:
+
+```env
+# In .env
+CUSTOM_CRON_JOBS="*/5 * * * * /opt/wpfleet/scripts/health-scale.sh >> /var/log/wpfleet/auto-scale.log 2>&1"
+```
+
+## Scale-Down Policies
+
+Scaling down requires care to avoid dropping active requests.
+
+### Safe Scale-Down Procedure
+
+1. **Mark instance for removal** -- stop sending new traffic
+2. **Drain connections** -- wait for active requests to complete
+3. **Run health check** -- verify remaining instances can handle load
+4. **Remove instance** -- terminate the server/container
+
+```bash
+#!/bin/bash
+# scale-down.sh - Safely remove a web instance
+
+TARGET_SERVER=$1
+DRAIN_TIMEOUT=300  # 5 minutes
+
+echo "Draining connections from $TARGET_SERVER..."
+
+# Step 1: Remove from load balancer (stop new traffic)
+# Adjust for your LB provider:
+# doctl compute load-balancer remove-droplets LB_ID --droplet-ids DROPLET_ID
+# hcloud load-balancer remove-target LB_ID --server SERVER_NAME
+# aws elbv2 deregister-targets --target-group-arn ARN --targets Id=INSTANCE_ID
+
+# Step 2: Wait for active connections to drain
+echo "Waiting ${DRAIN_TIMEOUT}s for connections to drain..."
+sleep "$DRAIN_TIMEOUT"
+
+# Step 3: Verify remaining capacity
+REMAINING_SERVERS=$(docker compose ps --format json | jq -s 'length')
+if [ "$REMAINING_SERVERS" -lt 2 ]; then
+    echo "Cannot scale below 2 instances, aborting"
+    # Re-add to load balancer
+    exit 1
+fi
+
+# Step 4: Stop and remove
+docker compose stop "$TARGET_SERVER"
+echo "Instance $TARGET_SERVER removed"
+```
+
+### Connection Draining
+
+When using Caddy as a load balancer, configure health check intervals to detect removed backends:
+
+```
+reverse_proxy frankenphp:443 {
+    lb_policy round_robin
+    health_uri /wp-login.php
+    health_interval 10s
+    health_timeout 5s
+    fail_duration 30s
+}
+```
+
+Backends that fail health checks are automatically removed from the pool within `fail_duration`.
+
+### Minimum Instance Policy
+
+Always maintain a minimum number of instances for reliability:
+
+- **Production:** minimum 2 instances (for redundancy)
+- **Staging:** minimum 1 instance
+- **Development:** scale to 0 allowed (cost savings)
+
 ## Related Documentation
 
+- [Capacity Planning](./capacity-planning.md)
 - [Installation Guide](./installation.md)
 - [Monitoring](./monitoring.md)
 - [Cache Management](./cache-management.md)

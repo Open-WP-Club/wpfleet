@@ -71,7 +71,9 @@ safe_sed_replace() {
     local file=$1
     local search=$2
     local replace=$3
-    local temp_file=$(mktemp)
+    local temp_file
+    temp_file=$(mktemp)
+    register_cleanup "file" "$temp_file"
 
     # Escape special characters for sed
     search=$(printf '%s\n' "$search" | sed 's/[[\.*^$/]/\\&/g')
@@ -206,15 +208,63 @@ check_disk_space() {
     return 0
 }
 
+# Cleanup registry for graceful shutdown
+CLEANUP_ITEMS=()
+
+# Register an item for cleanup on exit/signal
+# Usage: register_cleanup "file" "/tmp/myfile.tmp"
+#        register_cleanup "dir" "/tmp/mydir"
+#        register_cleanup "lock" "/tmp/mylock"
+#        register_cleanup "cmd" "some_cleanup_command arg1 arg2"
+register_cleanup() {
+    local type=$1
+    local target=$2
+    CLEANUP_ITEMS+=("${type}:${target}")
+}
+
 # Graceful shutdown handler
 setup_shutdown_handler() {
-    trap 'cleanup_on_shutdown' SIGTERM SIGINT
+    trap 'cleanup_on_shutdown' EXIT SIGTERM SIGINT SIGHUP
 }
 
 cleanup_on_shutdown() {
-    print_info "Received shutdown signal, cleaning up..."
-    # Override this function in your script
-    exit 0
+    local exit_code=$?
+
+    # Prevent re-entrancy
+    trap '' EXIT SIGTERM SIGINT SIGHUP
+
+    if [ ${#CLEANUP_ITEMS[@]} -gt 0 ]; then
+        print_info "Cleaning up ${#CLEANUP_ITEMS[@]} registered item(s)..."
+
+        # Iterate in reverse order (LIFO)
+        for (( i=${#CLEANUP_ITEMS[@]}-1; i>=0; i-- )); do
+            local entry="${CLEANUP_ITEMS[$i]}"
+            local type="${entry%%:*}"
+            local target="${entry#*:}"
+
+            case "$type" in
+                file)
+                    [ -f "$target" ] && rm -f "$target" 2>/dev/null
+                    ;;
+                dir)
+                    [ -d "$target" ] && rm -rf "$target" 2>/dev/null
+                    ;;
+                lock)
+                    [ -d "$target" ] && rm -rf "$target" 2>/dev/null
+                    ;;
+                cmd)
+                    eval "$target" 2>/dev/null
+                    ;;
+            esac
+        done
+    fi
+
+    # Call custom cleanup if defined by sourcing script
+    if declare -f custom_cleanup >/dev/null 2>&1; then
+        custom_cleanup
+    fi
+
+    exit "$exit_code"
 }
 
 # Get script directory and project root
@@ -362,7 +412,7 @@ export -f print_header print_ok print_warning print_error print_info print_succe
 export -f validate_domain sanitize_domain_for_db safe_sed_replace
 export -f acquire_lock release_lock load_env check_docker check_container
 export -f validate_email generate_password retry_with_backoff check_disk_space
-export -f setup_shutdown_handler cleanup_on_shutdown
+export -f register_cleanup setup_shutdown_handler cleanup_on_shutdown
 export -f get_script_paths format_bytes format_kb format_duration
 export -f get_timestamp get_timestamp_filename log_to_file
 export -f command_exists is_root get_current_user confirm wait_for

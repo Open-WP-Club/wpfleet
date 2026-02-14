@@ -1,0 +1,44 @@
+name: ShellCheck
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**/*.sh'
+      - 'docker/**/*.sh'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/**/*.sh'
+      - 'docker/**/*.sh'
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck on scripts/
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: scripts
+          severity: error
+          format: gcc
+
+      - name: Run ShellCheck on docker/
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: docker
+          severity: error
+          format: gcc
+
+      - name: Run ShellCheck warnings (non-blocking)
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: scripts
+          severity: warning
+          format: gcc
+        continue-on-error: true

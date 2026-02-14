@@ -14,6 +14,10 @@ source "$LIB_DIR/database.sh"
 source "$LIB_DIR/validation.sh"
 source "$LIB_DIR/notifications.sh"
 source "$LIB_DIR/install.sh"
+source "$LIB_DIR/logger.sh"
+
+# Enable graceful shutdown handlers for all scripts
+setup_shutdown_handler
 
 # Set PROJECT_ROOT if not already set
 if [[ -z "$PROJECT_ROOT" ]]; then

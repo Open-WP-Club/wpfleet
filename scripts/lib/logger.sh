@@ -3,13 +3,62 @@
 # WPFleet Enhanced Logger Library
 # Provides both human-readable and structured JSON logging
 
-# Source common functions
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/common.sh"
+# Source common functions if not already loaded (standalone usage)
+if ! declare -f print_info >/dev/null 2>&1; then
+    _LOGGER_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    source "$_LOGGER_LIB_DIR/common.sh"
+fi
 
 # Enable structured logging (set to "true" for JSON output)
 STRUCTURED_LOGGING="${STRUCTURED_LOGGING:-false}"
 LOG_FILE="${LOG_FILE:-}"
+
+# Log rotation settings
+LOG_MAX_SIZE_BYTES="${LOG_MAX_SIZE_BYTES:-10485760}"  # 10MB default
+LOG_MAX_ROTATIONS="${LOG_MAX_ROTATIONS:-5}"
+
+# Rotate log file if it exceeds LOG_MAX_SIZE_BYTES
+# Rotation scheme: file.log -> file.log.1 -> file.log.2.gz -> ... -> file.log.N.gz
+rotate_log_file() {
+    local log_file=$1
+
+    [ -z "$log_file" ] && return 0
+    [ ! -f "$log_file" ] && return 0
+
+    local file_size
+    # macOS uses stat -f%z, Linux uses stat -c%s
+    if stat -f%z "$log_file" >/dev/null 2>&1; then
+        file_size=$(stat -f%z "$log_file")
+    else
+        file_size=$(stat -c%s "$log_file" 2>/dev/null || echo 0)
+    fi
+
+    [ "$file_size" -lt "$LOG_MAX_SIZE_BYTES" ] && return 0
+
+    # Remove the oldest rotated file
+    local oldest="${log_file}.${LOG_MAX_ROTATIONS}.gz"
+    [ -f "$oldest" ] && rm -f "$oldest"
+
+    # Shift existing rotated files up by one
+    local i
+    for (( i=LOG_MAX_ROTATIONS-1; i>=2; i-- )); do
+        local src="${log_file}.${i}.gz"
+        local dst="${log_file}.$((i+1)).gz"
+        [ -f "$src" ] && mv "$src" "$dst"
+    done
+
+    # Handle .1 -> .2.gz (compress the previous rotation)
+    if [ -f "${log_file}.1" ]; then
+        gzip -f "${log_file}.1" 2>/dev/null
+        [ -f "${log_file}.1.gz" ] && mv "${log_file}.1.gz" "${log_file}.2.gz"
+    fi
+
+    # Current log becomes .1 (uncompressed for easy tailing)
+    mv "$log_file" "${log_file}.1"
+
+    # Create fresh log file
+    touch "$log_file"
+}
 
 # Log levels
 declare -A LOG_LEVELS=(
@@ -103,6 +152,9 @@ wpfleet_log() {
     if [ "$message_level_num" -lt "$current_level_num" ]; then
         return 0
     fi
+
+    # Rotate log file if needed before writing
+    [ -n "$LOG_FILE" ] && rotate_log_file "$LOG_FILE"
 
     if [ "$STRUCTURED_LOGGING" = "true" ]; then
         log_json "$level" "$message" $context
@@ -241,4 +293,4 @@ log_database_metrics() {
 export -f wpfleet_log log_debug log_info log_warn log_error
 export -f log_operation execute_with_logging
 export -f log_container_metrics log_disk_usage log_database_metrics
-export -f log_json log_human get_log_level_num
+export -f log_json log_human get_log_level_num rotate_log_file

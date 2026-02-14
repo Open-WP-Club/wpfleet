@@ -165,23 +165,58 @@ reload_frankenphp() {
     }
 }
 
+# Execute rollback steps in reverse order
+rollback_site_setup() {
+    local -n steps=$1
+    local domain=$2
+
+    if [ ${#steps[@]} -eq 0 ]; then
+        return
+    fi
+
+    print_warning "Rolling back ${#steps[@]} completed step(s) for $domain..."
+
+    for (( i=${#steps[@]}-1; i>=0; i-- )); do
+        local step="${steps[$i]}"
+        print_info "Rollback: $step"
+        eval "$step" 2>/dev/null || print_warning "Rollback step failed: $step"
+    done
+
+    print_info "Rollback complete"
+}
+
 # Common infrastructure setup for all site types
 setup_site_infrastructure() {
     local domain=$1
-    local db_name=$(sanitize_domain_for_db "$domain")
+    local db_name
+    db_name=$(sanitize_domain_for_db "$domain")
     local site_dir="$PROJECT_ROOT/data/wordpress/$domain"
+    local logs_dir="$PROJECT_ROOT/data/logs/$domain"
+    local ROLLBACK_STEPS=()
 
     # Check if site already exists
     if [ -d "$site_dir" ]; then
         print_error "Site directory already exists: $site_dir"
         exit 1
     fi
-    
-    # Create site directory
-    mkdir -p "$site_dir"
-    mkdir -p "$PROJECT_ROOT/data/logs/$domain"
-    
-    # Create database
+
+    # Step 1: Create site directory
+    mkdir -p "$site_dir" || {
+        print_error "Failed to create site directory: $site_dir"
+        rollback_site_setup ROLLBACK_STEPS "$domain"
+        exit 1
+    }
+    ROLLBACK_STEPS+=("rm -rf '$site_dir'")
+
+    # Step 2: Create logs directory
+    mkdir -p "$logs_dir" || {
+        print_error "Failed to create logs directory: $logs_dir"
+        rollback_site_setup ROLLBACK_STEPS "$domain"
+        exit 1
+    }
+    ROLLBACK_STEPS+=("rm -rf '$logs_dir'")
+
+    # Step 3: Create database
     print_info "Creating database: $db_name"
     docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "
         CREATE DATABASE IF NOT EXISTS \`$db_name\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -189,18 +224,27 @@ setup_site_infrastructure() {
         FLUSH PRIVILEGES;
     " || {
         print_error "Failed to create database"
+        rollback_site_setup ROLLBACK_STEPS "$domain"
         exit 1
     }
-    
-    # Update Caddyfile
-    update_caddyfile "$domain" "add"
-    
-    # Reload FrankenPHP
+    ROLLBACK_STEPS+=("docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e \"DROP DATABASE IF EXISTS \\\`$db_name\\\`;\"")
+
+    # Step 4: Create Caddyfile
+    update_caddyfile "$domain" "add" || {
+        print_error "Failed to create Caddy configuration"
+        rollback_site_setup ROLLBACK_STEPS "$domain"
+        exit 1
+    }
+    ROLLBACK_STEPS+=("update_caddyfile '$domain' 'remove'")
+
+    # Step 5: Reload FrankenPHP
     reload_frankenphp || {
-        print_error "Failed to reload FrankenPHP. Site directory created but not active."
+        print_error "Failed to reload FrankenPHP"
+        rollback_site_setup ROLLBACK_STEPS "$domain"
         exit 1
     }
-    
+    ROLLBACK_STEPS+=("reload_frankenphp")
+
     echo "$db_name"  # Return db_name for other functions to use
 }
 
@@ -359,12 +403,13 @@ install_clean_wordpress() {
     local domain=$1
     local db_name=$2
     local site_dir="$PROJECT_ROOT/data/wordpress/$domain"
-    
+    local WP_ROLLBACK=()
+
     print_info "Installing clean WordPress..."
-    
-    # Create wp-config.php
+
+    # Download WP core and create config
     docker exec wpfleet_frankenphp bash -c "
-        cd /var/www/html/$domain && 
+        cd /var/www/html/$domain &&
         wp core download --allow-root &&
         wp config create \\
             --dbname='$db_name' \\
@@ -406,14 +451,16 @@ define( 'WP_DEBUG_DISPLAY', false );
 PHP
             --allow-root
     " || {
-        print_error "Failed to create WordPress configuration"
+        print_error "Failed to download WordPress or create configuration"
+        rollback_site_setup WP_ROLLBACK "$domain"
         exit 1
     }
-    
+    WP_ROLLBACK+=("docker exec wpfleet_frankenphp bash -c 'rm -rf /var/www/html/$domain/*'")
+
     # Install WordPress
     local wp_admin_password="${WP_ADMIN_PASSWORD:-$(openssl rand -base64 12)}"
     docker exec wpfleet_frankenphp bash -c "
-        cd /var/www/html/$domain && 
+        cd /var/www/html/$domain &&
         wp core install \\
             --url='https://$domain' \\
             --title='$domain' \\
@@ -424,6 +471,7 @@ PHP
             --allow-root
     " || {
         print_error "Failed to install WordPress"
+        rollback_site_setup WP_ROLLBACK "$domain"
         exit 1
     }
     
