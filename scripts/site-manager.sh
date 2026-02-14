@@ -27,7 +27,6 @@ check_docker_containers() {
 update_caddyfile() {
     local domain=$1
     local action=$2  # "add" or "remove"
-    local db_name=$(sanitize_domain_for_db "$domain")
 
     local site_config="$PROJECT_ROOT/config/caddy/sites/${domain}.caddy"
 
@@ -169,9 +168,9 @@ reload_frankenphp() {
 # Common infrastructure setup for all site types
 setup_site_infrastructure() {
     local domain=$1
-    local db_name="wp_$(sanitize_domain_for_db $domain)"
+    local db_name=$(sanitize_domain_for_db "$domain")
     local site_dir="$PROJECT_ROOT/data/wordpress/$domain"
-    
+
     # Check if site already exists
     if [ -d "$site_dir" ]; then
         print_error "Site directory already exists: $site_dir"
@@ -502,8 +501,8 @@ clone_site() {
 
     local source_dir="$PROJECT_ROOT/data/wordpress/$source_domain"
     local target_dir="$PROJECT_ROOT/data/wordpress/$target_domain"
-    local source_db="wp_$(sanitize_domain_for_db $source_domain)"
-    local target_db="wp_$(sanitize_domain_for_db $target_domain)"
+    local source_db=$(sanitize_domain_for_db "$source_domain")
+    local target_db=$(sanitize_domain_for_db "$target_domain")
 
     print_info "Cloning site: $source_domain → $target_domain"
 
@@ -620,7 +619,7 @@ remove_site() {
         exit 1
     fi
 
-    local db_name="wp_$(sanitize_domain_for_db $domain)"
+    local db_name=$(sanitize_domain_for_db "$domain")
     local site_dir="$PROJECT_ROOT/data/wordpress/$domain"
 
     print_info "Removing site: $domain"
@@ -673,7 +672,7 @@ list_sites() {
         for site_dir in "$PROJECT_ROOT/data/wordpress"/*; do
             if [ -d "$site_dir" ]; then
                 local domain=$(basename "$site_dir")
-                local db_name="wp_$(sanitize_domain_for_db $domain)"
+                local db_name=$(sanitize_domain_for_db "$domain")
                 
                 # Check if database exists
                 local db_exists=$(docker exec wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} -e "SHOW DATABASES LIKE '$db_name';" 2>/dev/null | wc -l)

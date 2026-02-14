@@ -158,12 +158,11 @@ log_operation() {
 execute_with_logging() {
     local operation=$1
     shift
-    local command="$@"
 
     log_info "Starting: $operation"
     local start_time=$(date +%s)
 
-    if eval "$command"; then
+    if "$@"; then
         local end_time=$(date +%s)
         log_operation "$operation" "$start_time" "$end_time" "success"
         return 0

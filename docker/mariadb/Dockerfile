@@ -1,4 +1,4 @@
-FROM mariadb:11
+FROM mariadb:11.7
 
 # Install additional tools for performance monitoring
 RUN apt-get update && apt-get install -y \

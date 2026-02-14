@@ -21,25 +21,6 @@ DEFAULT_QUOTA_MB="${DEFAULT_SITE_QUOTA_MB:-5000}"  # 5GB default
 # Create quota config directory
 mkdir -p "$QUOTA_CONFIG_DIR"
 
-# Convert bytes to human readable (wrapper for compatibility)
-bytes_to_human() {
-    format_bytes "$@"
-}
-
-# Legacy function wrapper
-_original_bytes_to_human() {
-    local bytes=$1
-    if [ $bytes -lt 1024 ]; then
-        echo "${bytes}B"
-    elif [ $bytes -lt 1048576 ]; then
-        echo "$(($bytes / 1024))KB"
-    elif [ $bytes -lt 1073741824 ]; then
-        echo "$(($bytes / 1048576))MB"
-    else
-        echo "$(($bytes / 1073741824))GB"
-    fi
-}
-
 # Convert MB to bytes
 mb_to_bytes() {
     echo $(($1 * 1048576))
@@ -74,7 +55,7 @@ set_quota() {
     fi
 
     echo "$quota_mb" > "$quota_file"
-    print_success "Quota set for $domain: ${quota_mb}MB ($(bytes_to_human $(mb_to_bytes $quota_mb)))"
+    print_success "Quota set for $domain: ${quota_mb}MB ($(format_bytes $(mb_to_bytes $quota_mb)))"
 }
 
 # Get current disk usage for a site (in bytes)
@@ -141,8 +122,8 @@ monitor() {
         local quota_bytes=$(mb_to_bytes $quota_mb)
         local usage_bytes=$(get_usage "$domain")
         local usage_percent=$(get_usage_percent "$domain")
-        local usage_human=$(bytes_to_human $usage_bytes)
-        local quota_human=$(bytes_to_human $quota_bytes)
+        local usage_human=$(format_bytes $usage_bytes)
+        local quota_human=$(format_bytes $quota_bytes)
 
         if [ $usage_percent -ge 100 ]; then
             print_error "$domain: QUOTA EXCEEDED - ${usage_human}/${quota_human} (${usage_percent}%)"
@@ -199,8 +180,8 @@ list() {
         local quota_bytes=$(mb_to_bytes $quota_mb)
         local usage_bytes=$(get_usage "$domain")
         local usage_percent=$(get_usage_percent "$domain")
-        local usage_human=$(bytes_to_human $usage_bytes)
-        local quota_human=$(bytes_to_human $quota_bytes)
+        local usage_human=$(format_bytes $usage_bytes)
+        local quota_human=$(format_bytes $quota_bytes)
 
         total_usage=$((total_usage + usage_bytes))
         total_quota=$((total_quota + quota_bytes))
@@ -209,7 +190,7 @@ list() {
     done
 
     echo ""
-    printf "%-30s %-15s %-15s\n" "TOTAL" "$(bytes_to_human $total_usage)" "$(bytes_to_human $total_quota)"
+    printf "%-30s %-15s %-15s\n" "TOTAL" "$(format_bytes $total_usage)" "$(format_bytes $total_quota)"
 }
 
 # Show detailed stats for a specific site
@@ -230,10 +211,10 @@ stats() {
     local quota_bytes=$(mb_to_bytes $quota_mb)
     local usage_bytes=$(get_usage "$domain")
     local usage_percent=$(get_usage_percent "$domain")
-    local usage_human=$(bytes_to_human $usage_bytes)
-    local quota_human=$(bytes_to_human $quota_bytes)
+    local usage_human=$(format_bytes $usage_bytes)
+    local quota_human=$(format_bytes $quota_bytes)
     local remaining_bytes=$((quota_bytes - usage_bytes))
-    local remaining_human=$(bytes_to_human $remaining_bytes)
+    local remaining_human=$(format_bytes $remaining_bytes)
 
     print_info "Disk Usage Statistics for: $domain"
     echo ""
@@ -286,7 +267,7 @@ case "${1:-}" in
             exit 1
         fi
         quota_mb=$(get_quota "$2")
-        echo "${quota_mb}MB ($(bytes_to_human $(mb_to_bytes $quota_mb)))"
+        echo "${quota_mb}MB ($(format_bytes $(mb_to_bytes $quota_mb)))"
         ;;
 
     check)
@@ -296,13 +277,13 @@ case "${1:-}" in
         fi
         domain=$2
         if check_quota "$domain"; then
-            usage=$(bytes_to_human $(get_usage "$domain"))
-            quota=$(bytes_to_human $(mb_to_bytes $(get_quota "$domain")))
+            usage=$(format_bytes $(get_usage "$domain"))
+            quota=$(format_bytes $(mb_to_bytes $(get_quota "$domain")))
             percent=$(get_usage_percent "$domain")
             print_success "$domain is within quota: ${usage}/${quota} (${percent}%)"
         else
-            usage=$(bytes_to_human $(get_usage "$domain"))
-            quota=$(bytes_to_human $(mb_to_bytes $(get_quota "$domain")))
+            usage=$(format_bytes $(get_usage "$domain"))
+            quota=$(format_bytes $(mb_to_bytes $(get_quota "$domain")))
             percent=$(get_usage_percent "$domain")
             print_error "$domain has exceeded quota: ${usage}/${quota} (${percent}%)"
             exit 1
@@ -353,7 +334,7 @@ case "${1:-}" in
         echo "  $0 stats example.com        # Detailed stats"
         echo ""
         echo "Configuration:"
-        echo "  Default quota: ${DEFAULT_QUOTA_MB}MB ($(bytes_to_human $(mb_to_bytes $DEFAULT_QUOTA_MB)))"
+        echo "  Default quota: ${DEFAULT_QUOTA_MB}MB ($(format_bytes $(mb_to_bytes $DEFAULT_QUOTA_MB)))"
         echo "  Set DEFAULT_SITE_QUOTA_MB in .env to change default"
         exit 1
         ;;

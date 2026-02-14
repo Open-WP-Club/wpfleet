@@ -21,16 +21,6 @@ check_git() {
     fi
 }
 
-# Legacy validate_domain wrapper (now uses library function)
-_validate_domain_legacy() {
-    local domain=$1
-    if [ ! -d "$PROJECT_ROOT/data/wordpress/$domain" ]; then
-        print_error "Site not found: $domain"
-        return 1
-    fi
-    return 0
-}
-
 # Extract repository name from URL
 get_repo_name() {
     local url=$1

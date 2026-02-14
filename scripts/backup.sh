@@ -94,14 +94,13 @@ mkdir -p "$BACKUP_ROOT/configs"
 # Function to backup a single site
 backup_site() {
     local domain=$1
-    local container_name="wpfleet_$domain"
     local db_name=$(get_db_name "$domain")
-    
+
     print_info "Backing up site: $domain"
-    
-    # Check if container exists
-    if ! docker ps -a --format '{{.Names}}' | grep -q "^$container_name$"; then
-        print_error "Container $container_name not found!"
+
+    # Verify FrankenPHP container is running (shared container for all sites)
+    if ! docker ps --format '{{.Names}}' | grep -q "^wpfleet_frankenphp$"; then
+        print_error "FrankenPHP container not running!"
         return 1
     fi
     
@@ -153,10 +152,8 @@ backup_site() {
     # Get WordPress version and other metadata
     local wp_version="unknown"
     local php_version="unknown"
-    if docker ps --format '{{.Names}}' | grep -q "^$container_name$"; then
-        wp_version=$(docker exec -u www-data $container_name wp core version 2>/dev/null || echo 'unknown')
-        php_version=$(docker exec $container_name php -v 2>/dev/null | head -1 | cut -d' ' -f2 || echo 'unknown')
-    fi
+    wp_version=$(docker exec -u www-data wpfleet_frankenphp wp core version --path="/var/www/html/$domain" 2>/dev/null || echo 'unknown')
+    php_version=$(docker exec wpfleet_frankenphp php -v 2>/dev/null | head -1 | cut -d' ' -f2 || echo 'unknown')
     
     # Create backup manifest
     cat > "$site_backup_dir/manifest.json" << EOF
@@ -164,7 +161,6 @@ backup_site() {
     "domain": "$domain",
     "timestamp": "$TIMESTAMP",
     "backup_date": "$(date -Iseconds)",
-    "container": "$container_name",
     "database": "$db_name",
     "wordpress_version": "$wp_version",
     "php_version": "$php_version",
@@ -245,12 +241,18 @@ check_docker
 case "$1" in
     all)
         print_info "Starting backup of all sites..."
-        
-        # Get all active sites
-        SITES=$(docker ps --filter "label=wpfleet.site" --format "{{.Labels}}" 2>/dev/null | sed 's/.*wpfleet.site=//' | sort)
-        
+
+        # Get all sites from filesystem
+        SITES=""
+        if [ -d "$PROJECT_ROOT/data/wordpress" ]; then
+            for site_dir in "$PROJECT_ROOT/data/wordpress"/*/; do
+                [ -d "$site_dir" ] && SITES="$SITES $(basename "$site_dir")"
+            done
+            SITES=$(echo "$SITES" | xargs | tr ' ' '\n' | sort)
+        fi
+
         if [ -z "$SITES" ]; then
-            print_error "No active sites found!"
+            print_error "No sites found in $PROJECT_ROOT/data/wordpress/"
             exit 1
         fi
         

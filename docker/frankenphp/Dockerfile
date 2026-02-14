@@ -1,7 +1,8 @@
 ARG PHP_VERSION=8.4
+ARG FRANKENPHP_VERSION=1.4
 
 # Build stage - compile extensions
-FROM dunglas/frankenphp:latest-php${PHP_VERSION} AS builder
+FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION} AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -45,7 +46,7 @@ RUN apt-get update && apt-get install -y \
   apcu
 
 # Production stage
-FROM dunglas/frankenphp:latest-php${PHP_VERSION}
+FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION}
 
 # Copy compiled extensions from builder
 COPY --from=builder /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/

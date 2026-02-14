@@ -13,11 +13,6 @@ source "$SCRIPT_DIR/lib/utils.sh"
 # Load environment variables
 load_env "$PROJECT_ROOT/.env" || exit 1
 
-# Function to execute MySQL command (for backward compatibility)
-exec_mysql() {
-    docker_mysql "$@"
-}
-
 case "$1" in
     shell)
         print_info "Opening MySQL shell..."
@@ -27,7 +22,7 @@ case "$1" in
         
     list)
         print_info "WordPress databases:"
-        exec_mysql -e "SHOW DATABASES LIKE 'wp_%';" | tail -n +2
+        docker_mysql -e "SHOW DATABASES LIKE 'wp_%';" | tail -n +2
         ;;
         
     export)
@@ -41,7 +36,7 @@ case "$1" in
         
         if [ "$2" = "all" ]; then
             print_info "Exporting all WordPress databases..."
-            DATABASES=$(exec_mysql -e "SHOW DATABASES LIKE 'wp_%';" | tail -n +2)
+            DATABASES=$(docker_mysql -e "SHOW DATABASES LIKE 'wp_%';" | tail -n +2)
             for db in $DATABASES; do
                 FILENAME="$OUTPUT_DIR/${db}_$(date +%Y%m%d_%H%M%S).sql"
                 print_info "Exporting $db to $FILENAME..."
@@ -76,7 +71,7 @@ case "$1" in
         print_info "Importing to database $DB_NAME..."
         
         # Create database if it doesn't exist
-        exec_mysql -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+        docker_mysql -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
         
         # Import the SQL file
         docker exec -i wpfleet_mariadb mysql -uroot -p${MYSQL_ROOT_PASSWORD} "$DB_NAME" < "$3"
@@ -86,11 +81,11 @@ case "$1" in
         
     optimize)
         print_info "Optimizing all WordPress databases..."
-        DATABASES=$(exec_mysql -e "SHOW DATABASES LIKE 'wp_%';" | tail -n +2)
+        DATABASES=$(docker_mysql -e "SHOW DATABASES LIKE 'wp_%';" | tail -n +2)
         for db in $DATABASES; do
             print_info "Optimizing $db..."
-            exec_mysql -e "USE \`$db\`; SHOW TABLES;" | tail -n +2 | while read table; do
-                exec_mysql -e "OPTIMIZE TABLE \`$db\`.\`$table\`;" >/dev/null
+            docker_mysql -e "USE \`$db\`; SHOW TABLES;" | tail -n +2 | while read table; do
+                docker_mysql -e "OPTIMIZE TABLE \`$db\`.\`$table\`;" >/dev/null
             done
         done
         print_success "All databases optimized!"
@@ -98,7 +93,7 @@ case "$1" in
         
     size)
         print_info "Database sizes:"
-        exec_mysql -e "
+        docker_mysql -e "
             SELECT 
                 table_schema AS 'Database',
                 ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) AS 'Size (MB)'
